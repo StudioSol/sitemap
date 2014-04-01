@@ -121,7 +121,7 @@ func CreateSitemapIndex(indexFile string, folder string, public_dir string) (err
     var index = Index{Sitemaps:[]Sitemap{}}
     //search sitemaps
     for _, f := range fs {
-        if strings.HasSuffix(f.Name(), ".xml.gz") {
+        if strings.HasSuffix(f.Name(), ".xml.gz") && !strings.HasSuffix(indexFile, f.Name()) {
             index.Sitemaps = append(index.Sitemaps, Sitemap{Loc: public_dir + f.Name(),LastMod: time.Now()})
         }
     }
@@ -146,6 +146,5 @@ func CreateSitemapIndex(indexFile string, folder string, public_dir string) (err
     }
 
     log.Printf("Sitemap Index created on %s", indexFile)
-
     return err
 }
