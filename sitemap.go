@@ -1,5 +1,5 @@
 package sitemap
-
+//todo: add func to ping searchs
 import (
     "log"
     "strconv"
@@ -10,7 +10,7 @@ import (
     "time"
 )
 
-type sitemapGroup struct {
+type SitemapGroup struct {
 	name    string
     urls    []URL
     url_channel    chan URL
@@ -18,25 +18,25 @@ type sitemapGroup struct {
     folder  string
 }
 
-func (s *sitemapGroup) Add (url URL ) {
+func (s *SitemapGroup) Add (url URL ) {
     s.url_channel <- url
 }
 
-func (s *sitemapGroup) CloseGroup ( ) {
+func (s *SitemapGroup) CloseGroup ( ) {
     s.Create(s.getURLSet())
     close(s.url_channel)
     s.Clear()
 }
 
-func (s *sitemapGroup) Clear ( ) {
+func (s *SitemapGroup) Clear ( ) {
     s.urls = []URL{}
 }
 
-func (s *sitemapGroup) getURLSet() URLSet{
+func (s *SitemapGroup) getURLSet() URLSet{
     return URLSet{URLs: s.urls}
 }
 
-func (s *sitemapGroup) Create (url_set URLSet) {
+func (s *SitemapGroup) Create (url_set URLSet) {
 
         xml := createXML(url_set)
 
@@ -52,8 +52,8 @@ func (s *sitemapGroup) Create (url_set URLSet) {
 
 }
 
-func NewSitemapGroup(folder string,name string) *sitemapGroup {
-	s := new(sitemapGroup)
+func NewSitemapGroup(folder string,name string) *SitemapGroup {
+	s := new(SitemapGroup)
     s.name = strings.Replace(name, ".xml.gz", "", 1)
     s.group_count = 1
     s.url_channel = make(chan URL)
