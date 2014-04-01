@@ -9,6 +9,7 @@ import (
     "os"
     "time"
     "net/http"
+    "sync"
 )
 
 type SitemapGroup struct {
@@ -159,29 +160,40 @@ func CreateSitemapIndex(indexFile string, folder string, public_dir string) (err
 func PingSearchEngines(indexFile string) {
     var urls = []string{
     	"http://www.google.com/webmasters/tools/ping?sitemap="+indexFile,
-    	"http://submissions.ask.com/ping?sitemap="+indexFile,
+    	//"http://submissions.ask.com/ping?sitemap="+indexFile,
     	"http://www.bing.com/webmaster/ping.aspx?siteMap="+indexFile,
-        "http://search.yahooapis.com/SiteExplorerService/V1/ping?sitemap="+indexFile
+        //"http://search.yahooapis.com/SiteExplorerService/V1/ping?sitemap="+indexFile,
         //"http://search.yahooapis.com/SiteExplorerService/V1/updateNotification?appid=USERID&url="
     }
 
     results := asyncHttpGets(urls)
-    for _ = range urls {
-		result := <-results
+
+    for result := range results {
 		log.Printf("%s status: %s\n", result.url, result.response.Status)
 	}
 
 }
 
-func asyncHttpGets(urls []string) <-chan *HttpResponse {
-	ch := make(chan *HttpResponse, len(urls)) // buffered
-	for _, url := range urls {
-		go func(url string) {
-			log.Printf("Fetching %s \n", url)
-			resp, err := http.Get(url)
-			resp.Body.Close()
-			ch <- &HttpResponse{url, resp, err}
-		}(url)
-	}
+func asyncHttpGets(urls []string) chan HttpResponse {
+	ch := make(chan HttpResponse)
+	go func() {
+        var wg sync.WaitGroup
+        for _, url := range urls {
+            wg.Add(1)
+    		go func(url string) {
+    			resp, err := http.Get(url)
+                if err != nil {
+                    log.Println("error", resp, err)
+                    wg.Done()
+                    return
+                }
+                resp.Body.Close()
+    			ch <- HttpResponse{url, resp, err}
+                wg.Done()
+    		}(url)
+    	}
+        wg.Wait()
+        close(ch)
+    }()
 	return ch
 }
