@@ -10,7 +10,7 @@ script to generate sitemaps with multiple files of same group
 package main
 
 import (
-    "github.com/vitalbh/sitemap"
+    "github.com/StudioSol/sitemap"
     "sync"
 )
 var wg sync.WaitGroup
