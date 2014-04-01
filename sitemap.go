@@ -1,5 +1,5 @@
 package sitemap
-//todo: add func to ping searchs
+
 import (
     "log"
     "strconv"
@@ -8,6 +8,7 @@ import (
     "compress/gzip"
     "os"
     "time"
+    "net/http"
 )
 
 type SitemapGroup struct {
@@ -16,6 +17,12 @@ type SitemapGroup struct {
     url_channel    chan URL
     group_count    int
     folder  string
+}
+
+type HttpResponse struct {
+    url      string
+    response *http.Response
+    err      error
 }
 
 func (s *SitemapGroup) Add (url URL ) {
@@ -147,4 +154,34 @@ func CreateSitemapIndex(indexFile string, folder string, public_dir string) (err
 
     log.Printf("Sitemap Index created on %s", indexFile)
     return err
+}
+
+func PingSearchEngines(indexFile string) {
+    var urls = []string{
+    	"http://www.google.com/webmasters/tools/ping?sitemap="+indexFile,
+    	"http://submissions.ask.com/ping?sitemap="+indexFile,
+    	"http://www.bing.com/webmaster/ping.aspx?siteMap="+indexFile,
+        "http://search.yahooapis.com/SiteExplorerService/V1/ping?sitemap="+indexFile
+        //"http://search.yahooapis.com/SiteExplorerService/V1/updateNotification?appid=USERID&url="
+    }
+
+    results := asyncHttpGets(urls)
+    for _ = range urls {
+		result := <-results
+		log.Printf("%s status: %s\n", result.url, result.response.Status)
+	}
+
+}
+
+func asyncHttpGets(urls []string) <-chan *HttpResponse {
+	ch := make(chan *HttpResponse, len(urls)) // buffered
+	for _, url := range urls {
+		go func(url string) {
+			log.Printf("Fetching %s \n", url)
+			resp, err := http.Get(url)
+			resp.Body.Close()
+			ch <- &HttpResponse{url, resp, err}
+		}(url)
+	}
+	return ch
 }
