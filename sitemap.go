@@ -160,10 +160,7 @@ func CreateSitemapIndex(indexFile string, folder string, public_dir string) (err
 func PingSearchEngines(indexFile string) {
     var urls = []string{
     	"http://www.google.com/webmasters/tools/ping?sitemap="+indexFile,
-    	//"http://submissions.ask.com/ping?sitemap="+indexFile,
-    	"http://www.bing.com/webmaster/ping.aspx?siteMap="+indexFile,
-        //"http://search.yahooapis.com/SiteExplorerService/V1/ping?sitemap="+indexFile,
-        //"http://search.yahooapis.com/SiteExplorerService/V1/updateNotification?appid=USERID&url="
+    	"http://www.bing.com/ping?sitemap="+indexFile,
     }
 
     results := asyncHttpGets(urls)
