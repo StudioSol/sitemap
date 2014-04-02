@@ -11,6 +11,7 @@ import (
     "net/http"
     "sync"
 )
+var savedSitemaps []string
 
 type SitemapGroup struct {
 	name    string
@@ -47,17 +48,25 @@ func (s *SitemapGroup) getURLSet() URLSet{
 func (s *SitemapGroup) Create (url_set URLSet) {
 
         xml := createXML(url_set)
-
-        var path string = s.folder + s.name + "_" + strconv.Itoa(s.group_count) + ".xml.gz"
+        var sitemap_name string = s.name + "_" + strconv.Itoa(s.group_count) + ".xml.gz"
+        var path string = s.folder + sitemap_name
 
         err := saveXml(xml, path)
 
         if err != nil {
             log.Fatal("File not saved:", err)
         }
+        savedSitemaps = append(savedSitemaps, sitemap_name)
         log.Printf("Sitemap created on %s", path)
         s.group_count++
 
+}
+
+func ClearSavedSitemaps() {
+    savedSitemaps = []string{}
+}
+func GetSavedSitemaps() []string {
+    return savedSitemaps
 }
 
 func NewSitemapGroup(folder string,name string) *SitemapGroup {
@@ -118,21 +127,34 @@ func saveXml(xmlFile []byte, path string) (err error){
 
 }
 
-func CreateSitemapIndex(indexFile string, folder string, public_dir string) (err error) {
+func CreateSitemapIndex(indexFile string, folder string, public_dir string, savedSitemaps []string) (err error) {
 
 
-    fs, err := ioutil.ReadDir(folder)
-    if err != nil {
-        return err
-    }
 
     var index = Index{Sitemaps:[]Sitemap{}}
-    //search sitemaps
-    for _, f := range fs {
-        if strings.HasSuffix(f.Name(), ".xml.gz") && !strings.HasSuffix(indexFile, f.Name()) {
-            index.Sitemaps = append(index.Sitemaps, Sitemap{Loc: public_dir + f.Name(),LastMod: time.Now()})
+
+    //Optinal parameter
+    if len(savedSitemaps) > 0 {
+
+        for _, fileName := range savedSitemaps {
+            index.Sitemaps = append(index.Sitemaps, Sitemap{Loc: public_dir + fileName,LastMod: time.Now()})
+        }
+
+    //search sitemaps on dir
+    } else {
+
+        fs, err := ioutil.ReadDir(folder)
+        if err != nil {
+            return err
+        }
+
+        for _, f := range fs {
+            if strings.HasSuffix(f.Name(), ".xml.gz") && !strings.HasSuffix(indexFile, f.Name()) {
+                index.Sitemaps = append(index.Sitemaps, Sitemap{Loc: public_dir + f.Name(),LastMod: f.ModTime()})
+            }
         }
     }
+
 
     //create xml
     indexXml, err := createSitemapIndexXml(index)

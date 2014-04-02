@@ -47,6 +47,8 @@ func main(){
     wg.Wait()
     group.CloseGroup()
     group2.CloseGroup()
-    sitemap.CreateSitemapIndex("./index.xml.gz","./", "http://domain.com.br/")
+    //Optional, for scanning the folder just pass an empty []string
+    savedSitemaps := sitemap.GetSavedSitemaps()
+    sitemap.CreateSitemapIndex("./index.xml.gz","./", "http://domain.com.br/", savedSitemaps)
 }
 ```
