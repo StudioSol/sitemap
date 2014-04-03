@@ -1,16 +1,16 @@
 package sitemap
 
 import (
-  "time"
-  "errors"
-  "encoding/xml"
+	"encoding/xml"
+	"errors"
+	"time"
 )
 
 const (
-  XMLNS = "http://www.sitemaps.org/schemas/sitemap/0.9"
-  PREAMBLE = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-  MAXURLSETSIZE = 5e4
-  MAXFILESIZE = 10 * 1024 * 1024
+	XMLNS         = "http://www.sitemaps.org/schemas/sitemap/0.9"
+	PREAMBLE      = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+	MAXURLSETSIZE = 5e4
+	MAXFILESIZE   = 10 * 1024 * 1024
 )
 
 type ChangeFreq string
@@ -27,7 +27,7 @@ const (
 
 type URL struct {
 	Loc        string     `xml:"loc"`
-	LastMod    time.Time  `xml:"lastmod,omitempty"`
+	LastMod    *time.Time `xml:"lastmod,omitempty"`
 	ChangeFreq ChangeFreq `xml:"changefreq,omitempty"`
 	Priority   float64    `xml:"priority,omitempty"`
 }
@@ -46,9 +46,8 @@ type Index struct {
 
 type Sitemap struct {
 	Loc     string     `xml:"loc"`
-	LastMod time.Time `xml:"lastmod,omitempty"`
+	LastMod *time.Time `xml:"lastmod,omitempty"`
 }
-
 
 func createSitemapXml(urlset URLSet) (sitemapXML []byte, err error) {
 	if len(urlset.URLs) > MAXURLSETSIZE {
@@ -63,8 +62,8 @@ func createSitemapXml(urlset URLSet) (sitemapXML []byte, err error) {
 		sitemapXML = append(sitemapXML, urlsetXML...)
 	}
 	if len(sitemapXML) > MAXFILESIZE {
-        err = errors.New("exceeded maximum file size of a sitemap")
-        return
+		err = errors.New("exceeded maximum file size of a sitemap")
+		return
 	}
 	return
 }
@@ -83,7 +82,7 @@ func createSitemapIndexXml(index Index) (indexXML []byte, err error) {
 	}
 	if len(indexXML) > MAXFILESIZE {
 		err = errors.New("exceeded maximum file size of a sitemap")
-        return
+		return
 	}
 	return
 }
