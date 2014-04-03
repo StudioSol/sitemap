@@ -1,8 +1,6 @@
 //Generates sitemaps and index files based on the sitemaps.org protocol.
 //facilitates the creation of sitemaps for large amounts of urls.
-
 // For a full guide visit https://github.com/StudioSol/Sitemap
-
 package sitemap
 
 import (
