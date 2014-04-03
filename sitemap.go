@@ -127,34 +127,37 @@ func saveXml(xmlFile []byte, path string) (err error){
 
 }
 
-func CreateSitemapIndex(indexFile string, folder string, public_dir string, savedSitemaps []string) (err error) {
+func CreateIndexByScanDir(targetDir string, indexFileName string, public_url string) (index Index) {
 
+    index = Index{Sitemaps:[]Sitemap{}}
 
+    fs, err := ioutil.ReadDir(targetDir)
+    if err != nil {
+        return
+    }
 
-    var index = Index{Sitemaps:[]Sitemap{}}
-
-    //Optinal parameter
-    if len(savedSitemaps) > 0 {
-
-        for _, fileName := range savedSitemaps {
-            index.Sitemaps = append(index.Sitemaps, Sitemap{Loc: public_dir + fileName,LastMod: time.Now()})
+    for _, f := range fs {
+        if strings.HasSuffix(f.Name(), ".xml.gz") && !strings.HasSuffix(indexFileName, f.Name()) {
+            index.Sitemaps = append(index.Sitemaps, Sitemap{Loc: public_url + f.Name(),LastMod: f.ModTime()})
         }
+    }
+    return
+}
 
-    //search sitemaps on dir
-    } else {
+func CreateIndexBySlice(urls []string, public_url string) (index Index) {
 
-        fs, err := ioutil.ReadDir(folder)
-        if err != nil {
-            return err
-        }
+    index = Index{Sitemaps:[]Sitemap{}}
 
-        for _, f := range fs {
-            if strings.HasSuffix(f.Name(), ".xml.gz") && !strings.HasSuffix(indexFile, f.Name()) {
-                index.Sitemaps = append(index.Sitemaps, Sitemap{Loc: public_dir + f.Name(),LastMod: f.ModTime()})
-            }
+    if len(urls) > 0 {
+        for _, fileName := range urls {
+            index.Sitemaps = append(index.Sitemaps, Sitemap{Loc: public_url + fileName, LastMod: time.Now()})
         }
     }
 
+    return
+}
+
+func CreateSitemapIndex(indexFilePath string, index Index) (err error) {
 
     //create xml
     indexXml, err := createSitemapIndexXml(index)
@@ -162,7 +165,7 @@ func CreateSitemapIndex(indexFile string, folder string, public_dir string, save
         return err
     }
     //touch path
-    fo, err := os.Create(indexFile)
+    fo, err := os.Create(indexFilePath)
     if err != nil {
         return err
     }
@@ -175,7 +178,7 @@ func CreateSitemapIndex(indexFile string, folder string, public_dir string, save
         return err
     }
 
-    log.Printf("Sitemap Index created on %s", indexFile)
+    log.Printf("Sitemap Index created on %s", indexFilePath)
     return err
 }
 
