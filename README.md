@@ -1,4 +1,4 @@
-# sitemap
+# sitemap [![GoDoc](https://godoc.org/github.com/StudioSol/sitemap?status.png)](https://godoc.org/github.com/StudioSol/sitemap)
 
 Generates sitemaps and index files based on the sitemaps.org protocol.
 

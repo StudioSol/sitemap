@@ -1,3 +1,8 @@
+//Generates sitemaps and index files based on the sitemaps.org protocol.
+//facilitates the creation of sitemaps for large amounts of urls.
+
+// For a full guide visit https://github.com/StudioSol/Sitemap
+
 package sitemap
 
 import (
@@ -14,6 +19,17 @@ import (
 
 var savedSitemaps []string
 
+//clean array of already generated sitemaps (not delete files)
+func ClearSavedSitemaps() {
+	savedSitemaps = []string{}
+}
+
+//returns the url of already generated sitemaps
+func GetSavedSitemaps() []string {
+	return savedSitemaps
+}
+
+//Represents an group of sitemaps
 type SitemapGroup struct {
 	name        string
 	urls        []URL
@@ -22,30 +38,30 @@ type SitemapGroup struct {
 	folder      string
 }
 
-type HttpResponse struct {
-	url      string
-	response *http.Response
-	err      error
-}
-
+//Add a sitemap.URL to the group
 func (s *SitemapGroup) Add(url URL) {
 	s.url_channel <- url
 }
 
+//Mandatory operation, handle the rest of the url that has not been added to any sitemap and add.
+//Furthermore performs cleaning of variables and closes the channel group
 func (s *SitemapGroup) CloseGroup() {
 	s.Create(s.getURLSet())
 	close(s.url_channel)
 	s.Clear()
 }
 
+//Clean Urls not yet added to the group
 func (s *SitemapGroup) Clear() {
 	s.urls = []URL{}
 }
 
+//Returns one sitemap.URLSet of Urls not yet added to the group
 func (s *SitemapGroup) getURLSet() URLSet {
 	return URLSet{URLs: s.urls}
 }
 
+//Saves the sitemap from the sitemap.URLSet
 func (s *SitemapGroup) Create(url_set URLSet) {
 
 	xml := createXML(url_set)
@@ -63,13 +79,10 @@ func (s *SitemapGroup) Create(url_set URLSet) {
 
 }
 
-func ClearSavedSitemaps() {
-	savedSitemaps = []string{}
-}
-func GetSavedSitemaps() []string {
-	return savedSitemaps
-}
-
+//Creates a new group of sitemaps that used a common name.
+//If the sitemap exceed the limit of 50k urls, new sitemaps will have a numeric suffix to the name. Example:
+//- blog_1.xml.gz
+//- blog_2.xml.gz
 func NewSitemapGroup(folder string, name string) *SitemapGroup {
 	s := new(SitemapGroup)
 	s.name = strings.Replace(name, ".xml.gz", "", 1)
@@ -100,6 +113,7 @@ func NewSitemapGroup(folder string, name string) *SitemapGroup {
 	return s
 }
 
+//Create sitemap XML from a URLSet
 func createXML(group URLSet) (sitemapXml []byte) {
 	sitemapXml, err := createSitemapXml(group)
 	if err != nil {
@@ -108,6 +122,7 @@ func createXML(group URLSet) (sitemapXml []byte) {
 	return
 }
 
+//Save and gzip xml
 func saveXml(xmlFile []byte, path string) (err error) {
 
 	fo, err := os.Create(path)
@@ -127,6 +142,8 @@ func saveXml(xmlFile []byte, path string) (err error) {
 
 }
 
+//Search all the xml.gz sitemaps_dir directory, uses the modified date of the file as lastModified
+//path_index is included for the function does not include the url of the index in your own content, if it is present in the same directory.
 func CreateIndexByScanDir(targetDir string, indexFileName string, public_url string) (index Index) {
 
 	index = Index{Sitemaps: []Sitemap{}}
@@ -145,6 +162,7 @@ func CreateIndexByScanDir(targetDir string, indexFileName string, public_url str
 	return
 }
 
+//Returns an index sitemap starting from a slice of urls
 func CreateIndexBySlice(urls []string, public_url string) (index Index) {
 
 	index = Index{Sitemaps: []Sitemap{}}
@@ -159,6 +177,7 @@ func CreateIndexBySlice(urls []string, public_url string) (index Index) {
 	return
 }
 
+//Creates and gzip the xml index
 func CreateSitemapIndex(indexFilePath string, index Index) (err error) {
 
 	//create xml
@@ -166,24 +185,13 @@ func CreateSitemapIndex(indexFilePath string, index Index) (err error) {
 	if err != nil {
 		return err
 	}
-	//touch path
-	fo, err := os.Create(indexFilePath)
-	if err != nil {
-		return err
-	}
-	defer fo.Close()
-	//Save gzip
-	zip := gzip.NewWriter(fo)
-	defer zip.Close()
-	_, err = zip.Write(indexXml)
-	if err != nil {
-		return err
-	}
-
+	err = saveXml(indexXml, indexFilePath)
 	log.Printf("Sitemap Index created on %s", indexFilePath)
 	return err
 }
 
+//Sends a ping to search engines indicating that the index has been updated.
+//Currently supports Google and Bing.
 func PingSearchEngines(indexFile string) {
 	var urls = []string{
 		"http://www.google.com/webmasters/tools/ping?sitemap=" + indexFile,
@@ -196,6 +204,12 @@ func PingSearchEngines(indexFile string) {
 		log.Printf("%s status: %s\n", result.url, result.response.Status)
 	}
 
+}
+
+type HttpResponse struct {
+	url      string
+	response *http.Response
+	err      error
 }
 
 func asyncHttpGets(urls []string) chan HttpResponse {
