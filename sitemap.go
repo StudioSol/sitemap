@@ -151,7 +151,8 @@ func CreateIndexBySlice(urls []string, public_url string) (index Index) {
 
 	if len(urls) > 0 {
 		for _, fileName := range urls {
-			index.Sitemaps = append(index.Sitemaps, Sitemap{Loc: public_url + fileName, LastMod: &time.Now()})
+			lastModified := time.Now()
+			index.Sitemaps = append(index.Sitemaps, Sitemap{Loc: public_url + fileName, LastMod: &lastModified})
 		}
 	}
 
