@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,97 +26,26 @@ func GetSavedSitemaps() []string {
 	return savedSitemaps
 }
 
-//Represents an group of sitemaps
-type SitemapGroup struct {
-	name        string
-	urls        []URL
-	url_channel chan URL
-	group_count int
-	folder      string
-}
-
-//Add a sitemap.URL to the group
-func (s *SitemapGroup) Add(url URL) {
-	s.url_channel <- url
-}
-
-//Mandatory operation, handle the rest of the url that has not been added to any sitemap and add.
-//Furthermore performs cleaning of variables and closes the channel group
-func (s *SitemapGroup) CloseGroup() {
-	s.Create(s.getURLSet())
-	close(s.url_channel)
-	s.Clear()
-}
-
-//Clean Urls not yet added to the group
-func (s *SitemapGroup) Clear() {
-	s.urls = []URL{}
-}
-
-//Returns one sitemap.URLSet of Urls not yet added to the group
-func (s *SitemapGroup) getURLSet() URLSet {
-	return URLSet{URLs: s.urls}
-}
-
-//Saves the sitemap from the sitemap.URLSet
-func (s *SitemapGroup) Create(url_set URLSet) {
-
-	xml := createXML(url_set)
-	var sitemap_name string = s.name + "_" + strconv.Itoa(s.group_count) + ".xml.gz"
-	var path string = s.folder + sitemap_name
-
-	err := saveXml(xml, path)
-
-	if err != nil {
-		log.Fatal("File not saved:", err)
-	}
-	savedSitemaps = append(savedSitemaps, sitemap_name)
-	log.Printf("Sitemap created on %s", path)
-	s.group_count++
-
-}
-
 //Creates a new group of sitemaps that used a common name.
 //If the sitemap exceed the limit of 50k urls, new sitemaps will have a numeric suffix to the name. Example:
 //- blog_1.xml.gz
 //- blog_2.xml.gz
 func NewSitemapGroup(folder string, name string) *SitemapGroup {
 	s := new(SitemapGroup)
-	s.name = strings.Replace(name, ".xml.gz", "", 1)
-	s.group_count = 1
-	s.url_channel = make(chan URL)
-	_, err := ioutil.ReadDir(folder)
-	if err != nil {
-		log.Fatal("Dir not allowed - ", err)
-	}
-	s.folder = folder
-
-	go func() {
-		for entry := range s.url_channel {
-
-			s.urls = append(s.urls, entry)
-
-			if len(s.urls) == MAXURLSETSIZE {
-
-				go func(urls URLSet) {
-					s.Create(urls)
-				}(s.getURLSet())
-
-				s.Clear()
-			}
-		}
-	}()
-
+	s.Configure(name, folder)
+	go s.Initialize()
 	return s
 }
 
-//Create sitemap XML from a URLSet
-func createXML(group URLSet) (sitemapXml []byte) {
-	sitemapXml, err := createSitemapXml(group)
-	if err != nil {
-		log.Fatal("work failed:", err)
-	}
-	return
+//Creates a new group of sitemaps indice that used a common name.
+//If the sitemap exceed the limit of 50k urls, new sitemaps will have a numeric suffix to the name. Example:
+//- blog_1.xml.gz
+//- blog_2.xml.gz
+func NewIndexGroup(folder string, name string) *IndexGroup {
+	s := new(IndexGroup)
+	s.Configure(name, folder)
+	go s.Initialize()
+	return s
 }
 
 //Save and gzip xml
