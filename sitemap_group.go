@@ -44,9 +44,9 @@ func (s *SitemapGroup) createXML(group URLSet) (sitemapXml []byte) {
 }
 
 //Saves the sitemap from the sitemap.URLSet
-func (s *SitemapGroup) Create() {
+func (s *SitemapGroup) Create(url_set URLSet) {
 	var path string
-	url_set := s.getURLSet()
+
 	xml := s.createXML(url_set)
 	sitemap_name := s.getSitemapName()
 	path = s.folder + sitemap_name
@@ -66,7 +66,7 @@ func (s *SitemapGroup) Create() {
 //Mandatory operation, handle the rest of the url that has not been added to any sitemap and add.
 //Furthermore performs cleaning of variables and closes the channel group
 func (s *SitemapGroup) CloseGroup() {
-	s.Create()
+	s.Create(s.getURLSet())
 	close(s.url_channel)
 	s.Clear()
 }
@@ -77,9 +77,9 @@ func (s *SitemapGroup) Initialize() {
 	for entry := range s.url_channel {
 		s.urls = append(s.urls, entry)
 		if len(s.urls) == MAXURLSETSIZE {
-			go func() {
-				s.Create()
-			}()
+			go func(url_set URLSet) {
+				s.Create(url_set)
+			}(s.getURLSet())
 			s.Clear()
 		}
 	}
