@@ -55,7 +55,7 @@ func (s *IndexGroup) Create(index Index) {
 	if err != nil {
 		log.Fatal("File not saved:", err)
 	}
-	savedSitemaps = append(savedSitemaps, sitemap_name)
+
 	s.group_count++
 
 	log.Printf("Sitemap created on %s", path)
