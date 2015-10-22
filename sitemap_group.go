@@ -3,6 +3,8 @@ package sitemap
 import (
 	"io/ioutil"
 	"log"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -49,7 +51,7 @@ func (s *SitemapGroup) Create(url_set URLSet) {
 
 	xml := s.createXML(url_set)
 	sitemap_name := s.getSitemapName()
-	path = s.folder + sitemap_name
+	path = filepath.Join(s.folder, sitemap_name)
 
 	err := saveXml(xml, path)
 
@@ -91,7 +93,10 @@ func (s *SitemapGroup) Configure(name string, folder string) {
 	s.group_count = 1
 	_, err := ioutil.ReadDir(folder)
 	if err != nil {
-		log.Fatal("Dir not allowed - ", err)
+		err = os.MkdirAll(folder, 0644)
+		if err != nil {
+			log.Fatal("Dir not allowed - ", err)
+		}
 	}
 	s.folder = folder
 }
