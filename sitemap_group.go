@@ -93,7 +93,7 @@ func (s *SitemapGroup) Configure(name string, folder string) {
 	s.group_count = 1
 	_, err := ioutil.ReadDir(folder)
 	if err != nil {
-		err = os.MkdirAll(folder, 0644)
+		err = os.MkdirAll(folder, 0655)
 		if err != nil {
 			log.Fatal("Dir not allowed - ", err)
 		}
