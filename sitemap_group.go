@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type SitemapGroup struct {
@@ -15,6 +16,7 @@ type SitemapGroup struct {
 	group_count int
 	urls        []URL
 	url_channel chan URL
+	done        chan bool
 }
 
 //Add a sitemap.URL to the group
@@ -45,7 +47,7 @@ func (s *SitemapGroup) Create(url_set URLSet) {
 
 	if err == ErrMaxFileSize {
 		//splits into two sitemaps recursively
-		newlimit := int(MAXURLSETSIZE) / 2
+		newlimit := MAXURLSETSIZE / 2
 		s.Create(URLSet{URLs: url_set.URLs[newlimit:]})
 		s.Create(URLSet{URLs: url_set.URLs[:newlimit]})
 		return
@@ -68,7 +70,6 @@ func (s *SitemapGroup) Create(url_set URLSet) {
 	savedSitemaps = append(savedSitemaps, sitemap_name)
 	s.group_count++
 	s.Clear()
-	log.Printf("Sitemap created on %s", path)
 
 	//append remnant urls if exists
 	if len(remnant) > 0 {
@@ -77,23 +78,56 @@ func (s *SitemapGroup) Create(url_set URLSet) {
 
 }
 
+// Starts to run the given list of Sitemap Groups concurrently.
+func CloseGroups(groups ...*SitemapGroup) (done <-chan bool) {
+	var wg sync.WaitGroup
+	wg.Add(len(groups))
+
+	ch := make(chan bool, 1)
+	for _, group := range groups {
+		go func(g *SitemapGroup) {
+			<-g.Close()
+			wg.Done()
+		}(group)
+	}
+	go func() {
+		wg.Wait()
+		ch <- true
+	}()
+	return ch
+}
+
 //Mandatory operation, handle the rest of the url that has not been added to any sitemap and add.
 //Furthermore performs cleaning of variables and closes the channel group
-func (s *SitemapGroup) CloseGroup() {
-	s.Create(s.getURLSet())
+func (s *SitemapGroup) Close() <-chan bool {
+	var closeDone = make(chan bool, 1)
 	close(s.url_channel)
-	s.Clear()
+
+	go func() {
+		<-s.done
+		closeDone <- true
+	}()
+
+	return closeDone
 }
 
 //Initialize channel
 func (s *SitemapGroup) Initialize() {
+	s.done = make(chan bool, 1)
+
 	s.url_channel = make(chan URL)
 	for entry := range s.url_channel {
 		s.urls = append(s.urls, entry)
 		if len(s.urls) == MAXURLSETSIZE {
-			s.Create(url_set)
+			s.Create(s.getURLSet())
 		}
 	}
+
+	//remnant urls
+	s.Create(s.getURLSet())
+	s.Clear()
+
+	s.done <- true
 }
 
 //Configure name and folder of group

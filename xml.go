@@ -11,8 +11,8 @@ import (
 const (
 	XMLNS         = "http://www.sitemaps.org/schemas/sitemap/0.9"
 	PREAMBLE      = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-	MAXURLSETSIZE = 5e4
-	MAXFILESIZE   = 10 * 1024 * 1024
+	MAXURLSETSIZE = 50000
+	MAXFILESIZE   = 10 * 1024 * 1024 //10mb
 )
 
 var (
