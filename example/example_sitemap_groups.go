@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/StudioSol/sitemap"
 	"sync"
+
+	"github.com/StudioSol/sitemap"
 )
 
 var wg sync.WaitGroup
