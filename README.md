@@ -29,9 +29,22 @@ group.Add(sitemap.URL{
     })
 ~~~
 
-#### group.CloseGroup()
 
-Mandatory operation, handle the rest of the url that has not been added to any sitemap and add, in addition to clean variables and close the channel group
+#### group.Close()
+
+Handle the rest of the url that has not been added to any sitemap and add, in addition to clean variables and close the channel group
+
+#### sitemap.CloseGroups(groups ...*SitemapGroup) (done <-chan bool)
+
+if you use several groups of sitemap is safer use this function to close all groups for you before creating the index. Returns a channel with the done signal.
+
+~~~ go
+	//release after close all groups
+	<-sitemap.CloseGroups(group, group2)
+
+	//generate index - by last execution paths
+	savedSitemaps := sitemap.GetSavedSitemaps()
+~~~
 
 ### Creating the index file
 

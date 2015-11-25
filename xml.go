@@ -1,16 +1,23 @@
 package sitemap
 
 import (
+	"compress/gzip"
 	"encoding/xml"
 	"errors"
+	"os"
 	"time"
 )
 
 const (
 	XMLNS         = "http://www.sitemaps.org/schemas/sitemap/0.9"
 	PREAMBLE      = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-	MAXURLSETSIZE = 5e4
-	MAXFILESIZE   = 10 * 1024 * 1024
+	MAXURLSETSIZE = 50000
+	MAXFILESIZE   = 10 * 1024 * 1024 //10mb
+)
+
+var (
+	ErrMaxUrlSetSize = errors.New("exceeded maximum number of URLs allowed in sitemap")
+	ErrMaxFileSize   = errors.New("exceeded maximum file size of a sitemap (10mb)")
 )
 
 type ChangeFreq string
@@ -51,7 +58,7 @@ type Sitemap struct {
 
 func createSitemapXml(urlset URLSet) (sitemapXML []byte, err error) {
 	if len(urlset.URLs) > MAXURLSETSIZE {
-		err = errors.New("exceeded maximum number of URLs allowed in sitemap")
+		err = ErrMaxUrlSetSize
 		return
 	}
 	urlset.XMLNS = XMLNS
@@ -62,7 +69,7 @@ func createSitemapXml(urlset URLSet) (sitemapXML []byte, err error) {
 		sitemapXML = append(sitemapXML, urlsetXML...)
 	}
 	if len(sitemapXML) > MAXFILESIZE {
-		err = errors.New("exceeded maximum file size of a sitemap")
+		err = ErrMaxFileSize
 		return
 	}
 	return
@@ -70,7 +77,7 @@ func createSitemapXml(urlset URLSet) (sitemapXML []byte, err error) {
 
 func createSitemapIndexXml(index Index) (indexXML []byte, err error) {
 	if len(index.Sitemaps) > MAXURLSETSIZE {
-		err = errors.New("exceeded maximum number of URLs allowed in sitemap")
+		err = ErrMaxUrlSetSize
 		return
 	}
 	index.XMLNS = XMLNS
@@ -81,8 +88,30 @@ func createSitemapIndexXml(index Index) (indexXML []byte, err error) {
 		indexXML = append(indexXML, sitemapIndexXML...)
 	}
 	if len(indexXML) > MAXFILESIZE {
-		err = errors.New("exceeded maximum file size of a sitemap")
+		err = ErrMaxFileSize
 		return
 	}
 	return
+}
+
+//Save and gzip xml
+func saveXml(xmlFile []byte, path string) (err error) {
+
+	fo, err := os.Create(path)
+	defer fo.Close()
+
+	if err != nil {
+		return err
+	}
+
+	zip, _ := gzip.NewWriterLevel(fo, gzip.BestCompression)
+	defer zip.Close()
+
+	_, err = zip.Write(xmlFile)
+	if err != nil {
+		return err
+	}
+
+	return err
+
 }

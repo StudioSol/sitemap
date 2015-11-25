@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type SitemapGroup struct {
@@ -15,6 +16,7 @@ type SitemapGroup struct {
 	group_count int
 	urls        []URL
 	url_channel chan URL
+	done        chan bool
 }
 
 //Add a sitemap.URL to the group
@@ -36,55 +38,96 @@ func (s *SitemapGroup) getSitemapName() string {
 	return s.name + "_" + strconv.Itoa(s.group_count) + ".xml.gz"
 }
 
-//Create sitemap XML from a URLSet
-func (s *SitemapGroup) createXML(group URLSet) (sitemapXml []byte) {
-	sitemapXml, err := createSitemapXml(group)
-	if err != nil {
-		log.Fatal("work failed:", err)
-	}
-	return
-}
-
 //Saves the sitemap from the sitemap.URLSet
 func (s *SitemapGroup) Create(url_set URLSet) {
 	var path string
+	var remnant []URL
 
-	xml := s.createXML(url_set)
+	xml, err := createSitemapXml(url_set)
+
+	if err == ErrMaxFileSize {
+		//splits into two sitemaps recursively
+		newlimit := MAXURLSETSIZE / 2
+		s.Create(URLSet{URLs: url_set.URLs[newlimit:]})
+		s.Create(URLSet{URLs: url_set.URLs[:newlimit]})
+		return
+	} else if err == ErrMaxUrlSetSize {
+		remnant = url_set.URLs[MAXURLSETSIZE:]
+		url_set.URLs = url_set.URLs[:MAXURLSETSIZE]
+		xml, err = createSitemapXml(url_set)
+	} else if err != nil {
+		log.Fatal("File not saved:", err)
+	}
+
 	sitemap_name := s.getSitemapName()
 	path = filepath.Join(s.folder, sitemap_name)
 
-	err := saveXml(xml, path)
-
+	err = saveXml(xml, path)
 	if err != nil {
 		log.Fatal("File not saved:", err)
 	}
+
 	savedSitemaps = append(savedSitemaps, sitemap_name)
 	s.group_count++
+	s.Clear()
 
-	log.Printf("Sitemap created on %s", path)
+	//append remnant urls if exists
+	if len(remnant) > 0 {
+		s.urls = append(s.urls, remnant...)
+	}
 
+}
+
+// Starts to run the given list of Sitemap Groups concurrently.
+func CloseGroups(groups ...*SitemapGroup) (done <-chan bool) {
+	var wg sync.WaitGroup
+	wg.Add(len(groups))
+
+	ch := make(chan bool, 1)
+	for _, group := range groups {
+		go func(g *SitemapGroup) {
+			<-g.Close()
+			wg.Done()
+		}(group)
+	}
+	go func() {
+		wg.Wait()
+		ch <- true
+	}()
+	return ch
 }
 
 //Mandatory operation, handle the rest of the url that has not been added to any sitemap and add.
 //Furthermore performs cleaning of variables and closes the channel group
-func (s *SitemapGroup) CloseGroup() {
-	s.Create(s.getURLSet())
+func (s *SitemapGroup) Close() <-chan bool {
+	var closeDone = make(chan bool, 1)
 	close(s.url_channel)
-	s.Clear()
+
+	go func() {
+		<-s.done
+		closeDone <- true
+	}()
+
+	return closeDone
 }
 
 //Initialize channel
 func (s *SitemapGroup) Initialize() {
+	s.done = make(chan bool, 1)
+
 	s.url_channel = make(chan URL)
 	for entry := range s.url_channel {
 		s.urls = append(s.urls, entry)
 		if len(s.urls) == MAXURLSETSIZE {
-			go func(url_set URLSet) {
-				s.Create(url_set)
-			}(s.getURLSet())
-			s.Clear()
+			s.Create(s.getURLSet())
 		}
 	}
+
+	//remnant urls
+	s.Create(s.getURLSet())
+	s.Clear()
+
+	s.done <- true
 }
 
 //Configure name and folder of group

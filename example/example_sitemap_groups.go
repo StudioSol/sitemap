@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/StudioSol/sitemap"
 	"sync"
+
+	"github.com/StudioSol/sitemap"
 )
 
 var wg sync.WaitGroup
@@ -47,8 +48,8 @@ func main() {
 
 	wg.Wait()
 
-	group.CloseGroup()
-	group2.CloseGroup()
+	//release after close all groups
+	<-sitemap.CloseGroups(group, group2)
 
 	//generate index - by scanning the folder (WARNING)
 	//index := sitemap.CreateIndexByScanDir("./", "./index.xml.gz", "http://domain.com.br/")
