@@ -36,32 +36,44 @@ func (s *SitemapGroup) getSitemapName() string {
 	return s.name + "_" + strconv.Itoa(s.group_count) + ".xml.gz"
 }
 
-//Create sitemap XML from a URLSet
-func (s *SitemapGroup) createXML(group URLSet) (sitemapXml []byte) {
-	sitemapXml, err := createSitemapXml(group)
-	if err != nil {
-		log.Fatal("work failed:", err)
-	}
-	return
-}
-
 //Saves the sitemap from the sitemap.URLSet
 func (s *SitemapGroup) Create(url_set URLSet) {
 	var path string
+	var remnant []URL
 
-	xml := s.createXML(url_set)
+	xml, err := createSitemapXml(url_set)
+
+	if err == ErrMaxFileSize {
+		//splits into two sitemaps recursively
+		newlimit := int(MAXURLSETSIZE) / 2
+		s.Create(URLSet{URLs: url_set.URLs[newlimit:]})
+		s.Create(URLSet{URLs: url_set.URLs[:newlimit]})
+		return
+	} else if err == ErrMaxUrlSetSize {
+		remnant = url_set.URLs[MAXURLSETSIZE:]
+		url_set.URLs = url_set.URLs[:MAXURLSETSIZE]
+		xml, err = createSitemapXml(url_set)
+	} else if err != nil {
+		log.Fatal("File not saved:", err)
+	}
+
 	sitemap_name := s.getSitemapName()
 	path = filepath.Join(s.folder, sitemap_name)
 
-	err := saveXml(xml, path)
-
+	err = saveXml(xml, path)
 	if err != nil {
 		log.Fatal("File not saved:", err)
 	}
+
 	savedSitemaps = append(savedSitemaps, sitemap_name)
 	s.group_count++
-
+	s.Clear()
 	log.Printf("Sitemap created on %s", path)
+
+	//append remnant urls if exists
+	if len(remnant) > 0 {
+		s.urls = append(s.urls, remnant...)
+	}
 
 }
 
@@ -79,10 +91,7 @@ func (s *SitemapGroup) Initialize() {
 	for entry := range s.url_channel {
 		s.urls = append(s.urls, entry)
 		if len(s.urls) == MAXURLSETSIZE {
-			go func(url_set URLSet) {
-				s.Create(url_set)
-			}(s.getURLSet())
-			s.Clear()
+			s.Create(url_set)
 		}
 	}
 }
