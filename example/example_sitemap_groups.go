@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"sync"
 
 	"github.com/StudioSol/sitemap"
@@ -10,8 +11,15 @@ var wg sync.WaitGroup
 
 func main() {
 
-	group := sitemap.NewSitemapGroup("./", "sitemap_group1")
-	group2 := sitemap.NewSitemapGroup("./", "sitemap_group2")
+	group, err := sitemap.NewSitemapGroup("./", "sitemap_group1")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	group2, err := sitemap.NewSitemapGroup("./", "sitemap_group2")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	wg.Add(10000)
 	go func() {
