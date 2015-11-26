@@ -26,22 +26,28 @@ func GetSavedSitemaps() []string {
 //If the sitemap exceed the limit of 50k urls, new sitemaps will have a numeric suffix to the name. Example:
 //- blog_1.xml.gz
 //- blog_2.xml.gz
-func NewSitemapGroup(folder string, name string) *SitemapGroup {
+func NewSitemapGroup(folder string, name string) (*SitemapGroup, error) {
 	s := new(SitemapGroup)
-	s.Configure(name, folder)
+	err := s.Configure(name, folder)
+	if err != nil {
+		return s, err
+	}
 	go s.Initialize()
-	return s
+	return s, nil
 }
 
 //Creates a new group of sitemaps indice that used a common name.
 //If the sitemap exceed the limit of 50k urls, new sitemaps will have a numeric suffix to the name. Example:
 //- blog_1.xml.gz
 //- blog_2.xml.gz
-func NewIndexGroup(folder string, name string) *IndexGroup {
+func NewIndexGroup(folder string, name string) (*IndexGroup, error) {
 	s := new(IndexGroup)
-	s.Configure(name, folder)
+	err := s.Configure(name, folder)
+	if err != nil {
+		return s, err
+	}
 	go s.Initialize()
-	return s
+	return s, nil
 }
 
 //Search all the xml.gz sitemaps_dir directory, uses the modified date of the file as lastModified

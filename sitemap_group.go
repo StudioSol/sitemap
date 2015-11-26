@@ -55,7 +55,9 @@ func (s *SitemapGroup) Create(url_set URLSet) {
 		remnant = url_set.URLs[MAXURLSETSIZE:]
 		url_set.URLs = url_set.URLs[:MAXURLSETSIZE]
 		xml, err = createSitemapXml(url_set)
-	} else if err != nil {
+	}
+
+	if err != nil {
 		log.Fatal("File not saved:", err)
 	}
 
@@ -114,8 +116,8 @@ func (s *SitemapGroup) Close() <-chan bool {
 //Initialize channel
 func (s *SitemapGroup) Initialize() {
 	s.done = make(chan bool, 1)
-
 	s.url_channel = make(chan URL)
+
 	for entry := range s.url_channel {
 		s.urls = append(s.urls, entry)
 		if len(s.urls) == MAXURLSETSIZE {
@@ -131,15 +133,13 @@ func (s *SitemapGroup) Initialize() {
 }
 
 //Configure name and folder of group
-func (s *SitemapGroup) Configure(name string, folder string) {
+func (s *SitemapGroup) Configure(name string, folder string) error {
 	s.name = strings.Replace(name, ".xml.gz", "", 1)
 	s.group_count = 1
+	s.folder = folder
 	_, err := ioutil.ReadDir(folder)
 	if err != nil {
 		err = os.MkdirAll(folder, 0655)
-		if err != nil {
-			log.Fatal("Dir not allowed - ", err)
-		}
 	}
-	s.folder = folder
+	return err
 }
