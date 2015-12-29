@@ -43,19 +43,22 @@ if you use several groups of sitemap is safer use this function to close all gro
 	<-sitemap.CloseGroups(group, group2)
 
 	//generate index - by last execution paths
-	savedSitemaps := sitemap.GetSavedSitemaps()
+	savedSitemaps := group.GetSavedSitemaps()
+	sitemapsgroup2 := group.GetSavedSitemaps()
+	savedSitemaps = append(savedSitemaps, sitemapsgroup2...)
+
 ~~~
 
 ### Creating the index file
 
 Currently we have 2 ways to create the index, searching for files in the directory or passing a slice of urls to sitemaps. To generate the slice of sitemaps generated in the last run we GetSavedSitemaps function.
 
-#### sitemap.GetSavedSitemaps() []string
+#### group.GetSavedSitemaps() []string
 
 Returns an array of urls in the sitemaps created script execution
 
 ~~~ go
-savedSitemaps := sitemap.GetSavedSitemaps()
+savedSitemaps := group.GetSavedSitemaps()
 ~~~
 
 #### sitemap.CreateIndexBySlice(savedSitemaps, path) sitemap.Index

@@ -11,12 +11,13 @@ import (
 )
 
 type SitemapGroup struct {
-	name        string
-	folder      string
-	group_count int
-	urls        []URL
-	url_channel chan URL
-	done        chan bool
+	name          string
+	folder        string
+	group_count   int
+	urls          []URL
+	url_channel   chan URL
+	done          chan bool
+	savedSitemaps []string
 }
 
 //Add a sitemap.URL to the group
@@ -69,7 +70,7 @@ func (s *SitemapGroup) Create(url_set URLSet) {
 		log.Fatal("File not saved:", err)
 	}
 
-	savedSitemaps = append(savedSitemaps, sitemap_name)
+	s.savedSitemaps = append(s.savedSitemaps, sitemap_name)
 	s.group_count++
 	s.Clear()
 
@@ -78,6 +79,16 @@ func (s *SitemapGroup) Create(url_set URLSet) {
 		s.urls = append(s.urls, remnant...)
 	}
 
+}
+
+//clean array of already generated sitemaps (not delete files)
+func (s *SitemapGroup) ClearSavedSitemaps() {
+	s.savedSitemaps = []string{}
+}
+
+//returns the url of already generated sitemaps
+func (s *SitemapGroup) GetSavedSitemaps() []string {
+	return s.savedSitemaps
 }
 
 // Starts to run the given list of Sitemap Groups concurrently.

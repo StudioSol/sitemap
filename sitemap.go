@@ -10,18 +10,6 @@ import (
 	"time"
 )
 
-var savedSitemaps []string
-
-//clean array of already generated sitemaps (not delete files)
-func ClearSavedSitemaps() {
-	savedSitemaps = []string{}
-}
-
-//returns the url of already generated sitemaps
-func GetSavedSitemaps() []string {
-	return savedSitemaps
-}
-
 //Creates a new group of sitemaps that used a common name.
 //If the sitemap exceed the limit of 50k urls, new sitemaps will have a numeric suffix to the name. Example:
 //- blog_1.xml.gz

@@ -63,7 +63,10 @@ func main() {
 	//index := sitemap.CreateIndexByScanDir("./", "./index.xml.gz", "http://domain.com.br/")
 
 	//generate index - by last execution paths
-	savedSitemaps := sitemap.GetSavedSitemaps()
+	savedSitemaps := group.GetSavedSitemaps()
+	savedSitemapsGroup2 := group2.GetSavedSitemaps()
+	savedSitemaps = append(savedSitemaps, savedSitemapsGroup2...)
+
 	index := sitemap.CreateIndexBySlice(savedSitemaps, "http://domain.com.br/")
 
 	sitemap.CreateSitemapIndex("./index.xml.gz", index)
