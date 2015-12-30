@@ -10,6 +10,7 @@ import (
 
 const (
 	XMLNS         = "http://www.sitemaps.org/schemas/sitemap/0.9"
+	XMLNSMOBILE   = "http://www.google.com/schemas/sitemap-mobile/1.0"
 	PREAMBLE      = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
 	MAXURLSETSIZE = 50000
 	MAXFILESIZE   = 10 * 1024 * 1024 //10mb
@@ -18,6 +19,7 @@ const (
 var (
 	ErrMaxUrlSetSize = errors.New("exceeded maximum number of URLs allowed in sitemap")
 	ErrMaxFileSize   = errors.New("exceeded maximum file size of a sitemap (10mb)")
+	ISMOBILE         = new(struct{})
 )
 
 type ChangeFreq string
@@ -37,12 +39,14 @@ type URL struct {
 	LastMod    *time.Time `xml:"lastmod,omitempty"`
 	ChangeFreq ChangeFreq `xml:"changefreq,omitempty"`
 	Priority   float64    `xml:"priority,omitempty"`
+	Mobile     *struct{}  `xml:"mobile:mobile,omitempty"`
 }
 
 type URLSet struct {
-	XMLName xml.Name `xml:"urlset"`
-	XMLNS   string   `xml:"xmlns,attr"`
-	URLs    []URL    `xml:"url"`
+	XMLName     xml.Name `xml:"urlset"`
+	XMLNS       string   `xml:"xmlns,attr"`
+	XMLNSMOBILE string   `xml:"xmlns:mobile,attr,omitempty"`
+	URLs        []URL    `xml:"url"`
 }
 
 type Index struct {
@@ -56,12 +60,17 @@ type Sitemap struct {
 	LastMod *time.Time `xml:"lastmod,omitempty"`
 }
 
-func createSitemapXml(urlset URLSet) (sitemapXML []byte, err error) {
+func createSitemapXml(urlset URLSet, isMobile bool) (sitemapXML []byte, err error) {
 	if len(urlset.URLs) > MAXURLSETSIZE {
 		err = ErrMaxUrlSetSize
 		return
 	}
 	urlset.XMLNS = XMLNS
+
+	if isMobile {
+		urlset.XMLNSMOBILE = XMLNSMOBILE
+	}
+
 	sitemapXML = []byte(PREAMBLE)
 	var urlsetXML []byte
 	urlsetXML, err = xml.Marshal(urlset)

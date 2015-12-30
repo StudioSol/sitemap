@@ -14,9 +14,9 @@ import (
 //If the sitemap exceed the limit of 50k urls, new sitemaps will have a numeric suffix to the name. Example:
 //- blog_1.xml.gz
 //- blog_2.xml.gz
-func NewSitemapGroup(folder string, name string) (*SitemapGroup, error) {
+func NewSitemapGroup(folder string, name string, isMobile bool) (*SitemapGroup, error) {
 	s := new(SitemapGroup)
-	err := s.Configure(name, folder)
+	err := s.Configure(name, folder, isMobile)
 	if err != nil {
 		return s, err
 	}

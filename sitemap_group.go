@@ -17,6 +17,7 @@ type SitemapGroup struct {
 	urls          []URL
 	url_channel   chan URL
 	done          chan bool
+	isMobile      bool
 	savedSitemaps []string
 }
 
@@ -44,7 +45,7 @@ func (s *SitemapGroup) Create(url_set URLSet) {
 	var path string
 	var remnant []URL
 
-	xml, err := createSitemapXml(url_set)
+	xml, err := createSitemapXml(url_set, s.isMobile)
 
 	if err == ErrMaxFileSize {
 		//splits into two sitemaps recursively
@@ -55,7 +56,7 @@ func (s *SitemapGroup) Create(url_set URLSet) {
 	} else if err == ErrMaxUrlSetSize {
 		remnant = url_set.URLs[MAXURLSETSIZE:]
 		url_set.URLs = url_set.URLs[:MAXURLSETSIZE]
-		xml, err = createSitemapXml(url_set)
+		xml, err = createSitemapXml(url_set, s.isMobile)
 	}
 
 	if err != nil {
@@ -144,10 +145,11 @@ func (s *SitemapGroup) Initialize() {
 }
 
 //Configure name and folder of group
-func (s *SitemapGroup) Configure(name string, folder string) error {
+func (s *SitemapGroup) Configure(name string, folder string, isMobile bool) error {
 	s.name = strings.Replace(name, ".xml.gz", "", 1)
 	s.group_count = 1
 	s.folder = folder
+	s.isMobile = isMobile
 	_, err := ioutil.ReadDir(folder)
 	if err != nil {
 		err = os.MkdirAll(folder, 0655)

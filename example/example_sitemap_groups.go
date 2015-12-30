@@ -11,12 +11,12 @@ var wg sync.WaitGroup
 
 func main() {
 
-	group, err := sitemap.NewSitemapGroup("./", "sitemap_group1")
+	group, err := sitemap.NewSitemapGroup("./", "sitemap_group1", false)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	group2, err := sitemap.NewSitemapGroup("./", "sitemap_group2")
+	group2, err := sitemap.NewSitemapGroup("./", "sitemap_group2", false)
 	if err != nil {
 		log.Fatal(err)
 	}
