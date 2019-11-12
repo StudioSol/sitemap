@@ -1,39 +1,42 @@
 package sitemap
 
 import (
-	"io/ioutil"
+	"compress/gzip"
+	"io"
 	"log"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 )
+
+type File struct {
+	Name    string
+	Content []byte
+}
+
+func (f *File) Write(w io.Writer) error {
+	zip, _ := gzip.NewWriterLevel(w, gzip.BestCompression)
+	defer zip.Close()
+	_, err := zip.Write(f.Content)
+	return err
+}
 
 type SitemapGroup struct {
 	name          string
 	folder        string
 	group_count   int
 	urls          []URL
-	url_channel   chan URL
-	done          chan bool
 	isMobile      bool
 	savedSitemaps []string
 }
 
 //Add a sitemap.URL to the group
 func (s *SitemapGroup) Add(url URL) {
-	s.url_channel <- url
+	s.urls = append(s.urls, url)
 }
 
 //Clean Urls not yet added to the group
 func (s *SitemapGroup) Clear() {
-	s.urls = []URL{}
-}
-
-//Returns one sitemap.URLSet of Urls not yet added to the group
-func (s *SitemapGroup) getURLSet() URLSet {
-	return URLSet{URLs: s.urls}
+	s.urls = nil
 }
 
 func (s *SitemapGroup) getSitemapName() string {
@@ -41,45 +44,46 @@ func (s *SitemapGroup) getSitemapName() string {
 }
 
 //Saves the sitemap from the sitemap.URLSet
-func (s *SitemapGroup) Create(url_set URLSet) {
-	var path string
+func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 	var remnant []URL
-
 	xml, err := createSitemapXml(url_set, s.isMobile)
 
 	if err == ErrMaxFileSize {
 		//splits into two sitemaps recursively
 		newlimit := MAXURLSETSIZE / 2
-		s.Create(URLSet{URLs: url_set.URLs[newlimit:]})
-		s.Create(URLSet{URLs: url_set.URLs[:newlimit]})
-		return
+		firstSplit, err := s.Create(URLSet{URLs: url_set.URLs[newlimit:]})
+		if err != nil {
+			return nil, err
+		}
+		secondSplit, err := s.Create(URLSet{URLs: url_set.URLs[:newlimit]})
+		if err != nil {
+			return nil, err
+		}
+		return append(firstSplit, secondSplit...), nil
 	} else if err == ErrMaxUrlSetSize {
 		remnant = url_set.URLs[MAXURLSETSIZE:]
 		url_set.URLs = url_set.URLs[:MAXURLSETSIZE]
 		xml, err = createSitemapXml(url_set, s.isMobile)
 	}
-
 	if err != nil {
-		log.Fatal("File not saved:", err)
+		return nil, err
 	}
 
 	sitemap_name := s.getSitemapName()
-	path = filepath.Join(s.folder, sitemap_name)
-
-	err = saveXml(xml, path)
-	if err != nil {
-		log.Fatal("File not saved:", err)
+	files := []File{
+		{Name: sitemap_name, Content: xml},
 	}
 
 	s.savedSitemaps = append(s.savedSitemaps, sitemap_name)
 	s.group_count++
 	s.Clear()
 
-	//append remnant urls if exists
+	// append remnant urls if exists
 	if len(remnant) > 0 {
 		s.urls = append(s.urls, remnant...)
 	}
 
+	return files, nil
 }
 
 //clean array of already generated sitemaps (not delete files)
@@ -88,71 +92,46 @@ func (s *SitemapGroup) ClearSavedSitemaps() {
 }
 
 //returns the url of already generated sitemaps
-func (s *SitemapGroup) GetSavedSitemaps() []string {
+func (s *SitemapGroup) URLs() []string {
 	return s.savedSitemaps
 }
 
-// Starts to run the given list of Sitemap Groups concurrently.
-func CloseGroups(groups ...*SitemapGroup) (done <-chan bool) {
-	var wg sync.WaitGroup
-	wg.Add(len(groups))
-
-	ch := make(chan bool, 1)
-	for _, group := range groups {
-		go func(g *SitemapGroup) {
-			<-g.Close()
-			wg.Done()
-		}(group)
-	}
+func (s *SitemapGroup) Files() chan File {
+	filesChannel := make(chan File)
 	go func() {
-		wg.Wait()
-		ch <- true
-	}()
-	return ch
-}
-
-//Mandatory operation, handle the rest of the url that has not been added to any sitemap and add.
-//Furthermore performs cleaning of variables and closes the channel group
-func (s *SitemapGroup) Close() <-chan bool {
-	var closeDone = make(chan bool, 1)
-	close(s.url_channel)
-
-	go func() {
-		<-s.done
-		closeDone <- true
-	}()
-
-	return closeDone
-}
-
-//Initialize channel
-func (s *SitemapGroup) Initialize() {
-	s.done = make(chan bool, 1)
-	s.url_channel = make(chan URL)
-
-	for entry := range s.url_channel {
-		s.urls = append(s.urls, entry)
-		if len(s.urls) == MAXURLSETSIZE {
-			s.Create(s.getURLSet())
+		var partialGroup []URL
+		defer close(filesChannel)
+		for _, entry := range s.urls {
+			partialGroup = append(partialGroup, entry)
+			if len(partialGroup) == MAXURLSETSIZE {
+				groupFiles, err := s.Create(URLSet{URLs: partialGroup})
+				if err != nil {
+					continue
+				}
+				for _, file := range groupFiles {
+					filesChannel <- file
+				}
+				partialGroup = nil
+			}
 		}
-	}
-
-	//remnant urls
-	s.Create(s.getURLSet())
-	s.Clear()
-
-	s.done <- true
+		// remaining files
+		if len(partialGroup) > 0 {
+			groupFiles, err := s.Create(URLSet{URLs: partialGroup})
+			if err != nil {
+				log.Println(err)
+			}
+			for _, file := range groupFiles {
+				filesChannel <- file
+			}
+			s.Clear()
+		}
+	}()
+	return filesChannel
 }
 
 //Configure name and folder of group
-func (s *SitemapGroup) Configure(name string, folder string, isMobile bool) error {
+func (s *SitemapGroup) Configure(name string, isMobile bool) {
 	s.name = strings.Replace(name, ".xml.gz", "", 1)
 	s.group_count = 1
-	s.folder = folder
 	s.isMobile = isMobile
-	_, err := ioutil.ReadDir(folder)
-	if err != nil {
-		err = os.MkdirAll(folder, 0655)
-	}
-	return err
 }
