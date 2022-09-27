@@ -97,15 +97,13 @@ func createSitemapIndexXml(index Index) (indexXML []byte, err error) {
 		indexXML = append(indexXML, sitemapIndexXML...)
 	}
 	if len(indexXML) > MAXFILESIZE {
-		err = ErrMaxFileSize
-		return
+		return nil, ErrMaxFileSize
 	}
 	return
 }
 
 //Save and gzip xml
 func saveXml(xmlFile []byte, path string) (err error) {
-
 	fo, err := os.Create(path)
 	defer fo.Close()
 

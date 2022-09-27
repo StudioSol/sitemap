@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 	"sync"
 
 	"github.com/StudioSol/sitemap"
@@ -10,66 +11,62 @@ import (
 var wg sync.WaitGroup
 
 func main() {
+	group := sitemap.NewSitemapGroup("user", false)
+	group2 := sitemap.NewSitemapGroup("blog", false)
 
-	group, err := sitemap.NewSitemapGroup("./", "sitemap_group1", false)
-	if err != nil {
-		log.Fatal(err)
+	for i := 0; i < 300000; i++ {
+		group.Add(sitemap.URL{Loc: "http://example.com/"})
+	}
+	for i := 0; i < 25; i++ {
+		group.Add(sitemap.URL{Loc: "http://example2.com/"})
+	}
+	for i := 0; i < 10; i++ {
+		group2.Add(sitemap.URL{Loc: "http://example.com/blog/"})
+	}
+	for i := 0; i < 10000; i++ {
+		group2.Add(sitemap.URL{Loc: "http://example.com/blog/"})
 	}
 
-	group2, err := sitemap.NewSitemapGroup("./", "sitemap_group2", false)
-	if err != nil {
-		log.Fatal(err)
+	files1 := group.Files()
+	files2 := group2.Files()
+
+	for file := range files1 {
+		log.Println(file.Name)
+
+		f, err := os.Create(file.Name)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = file.Write(f)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	wg.Add(10000)
-	go func() {
-		for i := 0; i < 10000; i++ {
-			group.Add(sitemap.URL{Loc: "http://example.com/"})
-			wg.Done()
+	for file := range files2 {
+		log.Println(file.Name)
+
+		f, err := os.Create(file.Name)
+		if err != nil {
+			log.Fatal(err)
 		}
-	}()
 
-	wg.Add(250000)
-	go func() {
-
-		for i := 0; i < 250000; i++ {
-			group.Add(sitemap.URL{Loc: "http://example2.com/"})
-			wg.Done()
+		err = file.Write(f)
+		if err != nil {
+			log.Fatal(err)
 		}
-	}()
-
-	wg.Add(10000)
-	go func() {
-		for i := 0; i < 10000; i++ {
-			group2.Add(sitemap.URL{Loc: "http://example.com/blog/"})
-			wg.Done()
-		}
-	}()
-
-	wg.Add(30000)
-	go func() {
-		for i := 0; i < 30000; i++ {
-			group2.Add(sitemap.URL{Loc: "http://example.com/blog/"})
-			wg.Done()
-		}
-	}()
-
-	wg.Wait()
-
-	//release after close all groups
-	<-sitemap.CloseGroups(group, group2)
-
-	//generate index - by scanning the folder (WARNING)
-	//index := sitemap.CreateIndexByScanDir("./", "./index.xml.gz", "http://domain.com.br/")
+	}
 
 	//generate index - by last execution paths
-	savedSitemaps := group.GetSavedSitemaps()
-	savedSitemapsGroup2 := group2.GetSavedSitemaps()
-	savedSitemaps = append(savedSitemaps, savedSitemapsGroup2...)
+	URLs := append(group.URLs(), group2.URLs()...)
+	index := sitemap.CreateIndexBySlice(URLs, "http://domain.com.br/")
 
-	index := sitemap.CreateIndexBySlice(savedSitemaps, "http://domain.com.br/")
-
-	sitemap.CreateSitemapIndex("./index.xml.gz", index)
+	log.Println("creating index...")
+	err := sitemap.CreateSitemapIndex("index.xml.gz", index)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	sitemap.PingSearchEngines("http://domain.com.br/index.xml.gz")
 }

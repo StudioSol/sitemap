@@ -14,14 +14,10 @@ import (
 //If the sitemap exceed the limit of 50k urls, new sitemaps will have a numeric suffix to the name. Example:
 //- blog_1.xml.gz
 //- blog_2.xml.gz
-func NewSitemapGroup(folder string, name string, isMobile bool) (*SitemapGroup, error) {
+func NewSitemapGroup(name string, isMobile bool) *SitemapGroup {
 	s := new(SitemapGroup)
-	err := s.Configure(name, folder, isMobile)
-	if err != nil {
-		return s, err
-	}
-	go s.Initialize()
-	return s, nil
+	s.Configure(name, isMobile)
+	return s
 }
 
 //Creates a new group of sitemaps indice that used a common name.
@@ -41,7 +37,6 @@ func NewIndexGroup(folder string, name string) (*IndexGroup, error) {
 //Search all the xml.gz sitemaps_dir directory, uses the modified date of the file as lastModified
 //path_index is included for the function does not include the url of the index in your own content, if it is present in the same directory.
 func CreateIndexByScanDir(targetDir string, indexFileName string, public_url string) (index Index) {
-
 	index = Index{Sitemaps: []Sitemap{}}
 
 	fs, err := ioutil.ReadDir(targetDir)
@@ -60,22 +55,18 @@ func CreateIndexByScanDir(targetDir string, indexFileName string, public_url str
 
 //Returns an index sitemap starting from a slice of urls
 func CreateIndexBySlice(urls []string, public_url string) (index Index) {
-
 	index = Index{Sitemaps: []Sitemap{}}
-
 	if len(urls) > 0 {
 		for _, fileName := range urls {
 			lastModified := time.Now()
 			index.Sitemaps = append(index.Sitemaps, Sitemap{Loc: public_url + fileName, LastMod: &lastModified})
 		}
 	}
-
 	return
 }
 
 //Creates and gzip the xml index
 func CreateSitemapIndex(indexFilePath string, index Index) (err error) {
-
 	//create xml
 	indexXml, err := createSitemapIndexXml(index)
 	if err != nil {

@@ -99,5 +99,5 @@ sitemap.PingSearchEngines("http://exemple.com/index.xml.gz")
 
 
 
-##Example
+## Example
 There is a very simple example of using the example folder.

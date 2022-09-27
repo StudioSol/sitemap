@@ -1,6 +1,7 @@
 package sitemap
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -10,16 +11,14 @@ import (
 //Currently supports Google and Bing.
 func PingSearchEngines(indexFile string) {
 	var urls = []string{
-		"http://www.google.com/webmasters/tools/ping?sitemap=" + indexFile,
-		"http://www.bing.com/ping?sitemap=" + indexFile,
+		fmt.Sprintf("http://www.google.com/ping?sitemap=%s", indexFile),
+		fmt.Sprintf("http://www.bing.com/ping?sitemap=%s", indexFile),
 	}
 
 	results := asyncHttpGets(urls)
-
 	for result := range results {
 		log.Printf("%s status: %s\n", result.url, result.response.Status)
 	}
-
 }
 
 type HttpResponse struct {
