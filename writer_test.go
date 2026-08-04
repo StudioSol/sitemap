@@ -249,7 +249,7 @@ func TestWriterSplitsOversizedFlush(t *testing.T) {
 	g := NewSitemapGroup("i18n", false)
 	g.SetWriter(c.write)
 
-	long := strings.Repeat("a", 120)
+	long := strings.Repeat("a", 320)
 	for i := 0; i < MAXURLSETSIZE; i++ {
 		path := fmt.Sprintf("%s/%d/", long, i)
 		g.Add(URL{
@@ -378,7 +378,7 @@ func TestDeliveredFilesStayReportedWhenALaterOneFails(t *testing.T) {
 	})
 
 	// long locs, so one flush splits into several files
-	long := strings.Repeat("a", 260)
+	long := strings.Repeat("a", 1100)
 	for i := 0; i < MAXURLSETSIZE; i++ {
 		g.Add(URL{Loc: fmt.Sprintf("https://ex.com/%s%d", long, i)})
 	}

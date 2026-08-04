@@ -88,7 +88,7 @@ func (s *IndexGroup) Create(index Index) error {
 			return s.fail(err)
 		}
 		//splits the set in half recursively, preserving entry order.
-		//len/2 (not MAXURLSETSIZE/2) because the 10mb limit can be reached
+		//len/2 (not MAXURLSETSIZE/2) because the file size limit can be reached
 		//with far fewer than 50k entries.
 		newlimit := len(index.Sitemaps) / 2
 		if err := s.Create(Index{Sitemaps: index.Sitemaps[:newlimit]}); err != nil {

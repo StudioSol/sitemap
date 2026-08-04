@@ -11,7 +11,7 @@ Creates a new group of sitemaps that share a common name.
 group := sitemap.NewSitemapGroup("blog", false)
 ~~~
 
-If the sitemap exceeds the limit of 50k urls — or the 10MB file limit — the group produces
+If the sitemap exceeds the limit of 50k urls — or the 50MB file limit — the group produces
 several files, with a numeric suffix on the name:
 - blog_1.xml.gz
 - blog_2.xml.gz
@@ -74,7 +74,7 @@ Two rules come from Google, not from this library, and are the caller's responsi
   region (`pt`, `pt-br`, `en-us`), or `sitemap.XDefault` for the fallback version.
 
 Alternates inflate each `<url>` by roughly 100 bytes per language, so a sitemap with many
-locales reaches the 10MB file limit well before the 50k URL limit. The group splits on
+locales can reach the 50MB file limit before the 50k URL limit. The group splits on
 either limit automatically.
 
 
@@ -153,7 +153,7 @@ if err := group.Err(); err != nil {     // errors raised inside Add
 ~~~
 
 Measured on 2M URLs carrying two alternates each: **645 MB retained without a writer, 13 MB
-peak with one**. The 10MB split, the file numbering and `URLs()` behave the same either way.
+peak with one**. The size split, the file numbering and `URLs()` behave the same either way.
 
 `Add` cannot return an error, so failures from the incremental path are recorded and read
 back through `Err()`. `SetWriter` and `Files()` are alternative paths — pick one per group.

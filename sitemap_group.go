@@ -240,7 +240,7 @@ func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 		}
 		//splits the set in half recursively, preserving url order.
 		//splitting on len/2 (not MAXURLSETSIZE/2) matters because a set can
-		//exceed 10mb with far fewer than 50k urls - alternates make that common.
+		//exceed the file size limit with far fewer than 50k urls.
 		newlimit := len(url_set.URLs) / 2
 		firstSplit, err := s.Create(URLSet{URLs: url_set.URLs[:newlimit]})
 		if err != nil {

@@ -14,7 +14,13 @@ const (
 	XMLNSXHTML    = "http://www.w3.org/1999/xhtml"
 	PREAMBLE      = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
 	MAXURLSETSIZE = 50000
-	MAXFILESIZE   = 10 * 1024 * 1024 //10mb
+	// MAXFILESIZE is the protocol's limit on a single uncompressed sitemap:
+	// "each Sitemap file that you provide must have no more than 50,000 URLs
+	// and must be no larger than 50MB (52,428,800 bytes)".
+	//
+	// It was 10MB until the protocol was revised; enforcing the old value only
+	// split files that were well within spec.
+	MAXFILESIZE = 50 * 1024 * 1024 //50mb
 
 	// XDefault is the hreflang value that marks the fallback version served
 	// when no other localized version matches the user's language.
@@ -38,7 +44,7 @@ const (
 
 var (
 	ErrMaxUrlSetSize = errors.New("exceeded maximum number of URLs allowed in sitemap")
-	ErrMaxFileSize   = errors.New("exceeded maximum file size of a sitemap (10mb)")
+	ErrMaxFileSize   = errors.New("exceeded maximum file size of a sitemap (50mb)")
 	ISMOBILE         = new(struct{})
 )
 
