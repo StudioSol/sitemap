@@ -49,8 +49,45 @@ type SitemapGroup struct {
 	//Add does not block on a slow writer.
 	emitMu sync.Mutex
 
+	//guards group_count and savedSitemaps, so a name is never handed out twice
+	//even when Create runs from more than one goroutine.
+	metaMu sync.Mutex
+
 	errMu sync.Mutex
 	err   error
+}
+
+// nextName reserves the next file name and records it, atomically.
+func (s *SitemapGroup) nextName() string {
+	s.metaMu.Lock()
+	defer s.metaMu.Unlock()
+	name := s.name + "_" + strconv.Itoa(s.group_count) + ".xml.gz"
+	s.savedSitemaps = append(s.savedSitemaps, name)
+	s.group_count++
+	return name
+}
+
+// forgetNames drops names from savedSitemaps, for files that were built but
+// never delivered. The counter is left alone: reusing a number could collide
+// with a file that did make it out.
+func (s *SitemapGroup) forgetNames(names []string) {
+	if len(names) == 0 {
+		return
+	}
+	drop := make(map[string]bool, len(names))
+	for _, n := range names {
+		drop[n] = true
+	}
+
+	s.metaMu.Lock()
+	defer s.metaMu.Unlock()
+	kept := s.savedSitemaps[:0]
+	for _, n := range s.savedSitemaps {
+		if !drop[n] {
+			kept = append(kept, n)
+		}
+	}
+	s.savedSitemaps = kept
 }
 
 // SetWriter makes the group hand each sitemap file to fn as soon as it fills,
@@ -75,6 +112,11 @@ type SitemapGroup struct {
 // SetWriter and Files are alternative paths and should not be mixed on one
 // group: with a writer set, the files are emitted through fn, so Files would
 // only ever see whatever has not been flushed yet.
+//
+// fn is never called from two goroutines at once. Under concurrent Add the file
+// numbers do not track the order urls arrived in, though - two batches can
+// reach the writer in either order. Which file a url lands in carries no
+// meaning for the protocol, so this only affects the names.
 func (s *SitemapGroup) SetWriter(fn func(File) error) {
 	s.writer = fn
 }
@@ -94,6 +136,10 @@ func (s *SitemapGroup) Flush() error {
 
 // emit builds the files for urls and hands them to the writer, one flush at a
 // time.
+//
+// A name is only allowed to stay in URLs() once its file has been delivered:
+// otherwise a failed write would leave the index pointing at a file nobody
+// wrote.
 func (s *SitemapGroup) emit(urls []URL) error {
 	s.emitMu.Lock()
 	defer s.emitMu.Unlock()
@@ -102,8 +148,13 @@ func (s *SitemapGroup) emit(urls []URL) error {
 	if err != nil {
 		return err
 	}
-	for _, f := range files {
+	for i, f := range files {
 		if err := s.writer(f); err != nil {
+			undelivered := make([]string, 0, len(files)-i)
+			for _, rest := range files[i:] {
+				undelivered = append(undelivered, rest.Name)
+			}
+			s.forgetNames(undelivered)
 			return err
 		}
 	}
@@ -130,11 +181,12 @@ func (s *SitemapGroup) Err() error {
 }
 
 // SetSchemaValidation makes the generated sitemaps carry xsi:schemaLocation,
-// so they can be checked against the sitemaps.org and xhtml schemas.
+// pairing the sitemaps.org and xhtml namespaces with the schemas that describe
+// them, so the output can be checked against those schemas.
 //
-// This is for local validation, not for production output: to make xhtml:link
-// validatable the xhtml namespace is declared as XHTMLSCHEMA instead of the
-// usual XMLNSXHTML, which the schemaLocation mapping requires.
+// The namespace declarations themselves are unchanged, so validation mode is
+// safe to inspect: it adds attributes rather than moving elements to a
+// different namespace.
 func (s *SitemapGroup) SetSchemaValidation(on bool) {
 	s.schemaValidation = on
 }
@@ -176,17 +228,6 @@ func (s *SitemapGroup) takeUrls() []URL {
 	return urls
 }
 
-// addAll appends urls back onto the group, for remnants left by a split.
-func (s *SitemapGroup) addAll(urls []URL) {
-	s.mu.Lock()
-	s.urls = append(s.urls, urls...)
-	s.mu.Unlock()
-}
-
-func (s *SitemapGroup) getSitemapName() string {
-	return s.name + "_" + strconv.Itoa(s.group_count) + ".xml.gz"
-}
-
 // Saves the sitemap from the sitemap.URLSet
 func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 	var remnant []URL
@@ -219,22 +260,25 @@ func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 		return nil, err
 	}
 
-	sitemap_name := s.getSitemapName()
 	files := []File{
-		{Name: sitemap_name, Content: xml},
+		{Name: s.nextName(), Content: xml},
 	}
-
-	s.savedSitemaps = append(s.savedSitemaps, sitemap_name)
-	s.group_count++
 
 	//Deliberately does not clear s.urls. Create is given the set to write, and
 	//callers hand it a set they already took out of the group. Clearing here
 	//discarded whatever a concurrent Add had appended in the meantime, which is
 	//silent url loss on the incremental path.
-	//
-	// append remnant urls if exists
+
+	//Anything past the 50k count limit becomes further files, returned along
+	//with the first. Stashing the remnant back on the group instead would make
+	//Create return an incomplete partition, so a caller writing what it got
+	//back would quietly drop those urls.
 	if len(remnant) > 0 {
-		s.addAll(remnant)
+		rest, err := s.Create(URLSet{URLs: remnant})
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, rest...)
 	}
 
 	return files, nil
@@ -242,14 +286,23 @@ func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 
 // clean array of already generated sitemaps (not delete files)
 func (s *SitemapGroup) ClearSavedSitemaps() {
+	s.metaMu.Lock()
 	s.savedSitemaps = []string{}
+	s.metaMu.Unlock()
 }
 
 // returns the url of already generated sitemaps
 func (s *SitemapGroup) URLs() []string {
-	return s.savedSitemaps
+	s.metaMu.Lock()
+	defer s.metaMu.Unlock()
+	return append([]string(nil), s.savedSitemaps...)
 }
 
+// Files builds the pending urls into files and streams them.
+//
+// The channel closing does not mean everything succeeded: a batch that fails to
+// build is logged and recorded, so check Err after draining. Alternative to
+// SetWriter - use one or the other on a group, not both.
 func (s *SitemapGroup) Files() chan File {
 	filesChannel := make(chan File)
 	go func() {
@@ -261,7 +314,10 @@ func (s *SitemapGroup) Files() chan File {
 			if len(partialGroup) == MAXURLSETSIZE {
 				groupFiles, err := s.Create(URLSet{URLs: partialGroup})
 				if err != nil {
-					continue
+					//dropping these urls is bad enough without also hiding it,
+					//and partialGroup has to reset or it never fills again
+					log.Println(err)
+					s.setErr(err)
 				}
 				for _, file := range groupFiles {
 					filesChannel <- file
@@ -274,11 +330,13 @@ func (s *SitemapGroup) Files() chan File {
 			groupFiles, err := s.Create(URLSet{URLs: partialGroup})
 			if err != nil {
 				log.Println(err)
+				s.setErr(err)
 			}
 			for _, file := range groupFiles {
 				filesChannel <- file
 			}
-			s.Clear()
+			//no Clear here: takeUrls already emptied the group, so this would
+			//only ever discard what a concurrent Add appended since
 		}
 	}()
 	return filesChannel

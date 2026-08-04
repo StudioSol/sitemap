@@ -22,9 +22,18 @@ const (
 
 	// Declared only in schema validation mode, see
 	// SitemapGroup.SetSchemaValidation.
-	XSI            = "http://www.w3.org/2001/XMLSchema-instance"
-	XHTMLSCHEMA    = "http://www.w3.org/TR/xhtml11/xhtml11_schema.html"
-	SCHEMALOCATION = "http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd http://www.w3.org/TR/xhtml11/xhtml11_schema.html http://www.w3.org/2002/08/xhtml/xhtml1-strict.xsd"
+	XSI = "http://www.w3.org/2001/XMLSchema-instance"
+	// SCHEMALOCATION pairs each namespace with the schema that describes it.
+	// The xhtml half names XMLNSXHTML - the namespace hreflang alternates
+	// actually live in - not the schema document's own address.
+	SCHEMALOCATION = "http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd http://www.w3.org/1999/xhtml http://www.w3.org/2002/08/xhtml/xhtml1-strict.xsd"
+
+	// Deprecated: address of the xhtml11 schema document. Declaring it as the
+	// xhtml namespace stops Google reading xhtml:link as its hreflang
+	// extension, since xsi:schemaLocation pairs a namespace with a schema
+	// rather than replacing the namespace. Unused; kept because it shipped in
+	// v1.1.0.
+	XHTMLSCHEMA = "http://www.w3.org/TR/xhtml11/xhtml11_schema.html"
 )
 
 var (
@@ -125,11 +134,13 @@ func createSitemapXml(urlset URLSet, isMobile, schemaValidation bool) (sitemapXM
 	}
 
 	if schemaValidation {
-		// SCHEMALOCATION maps the xhtml11 namespace to the strict xhtml schema,
-		// so xhtml:link is only validatable when the declaration matches that
-		// URI rather than the usual one. Declared unconditionally here: the
-		// mapping is what is being validated, with or without alternates.
-		urlset.XMLNSXHTML = XHTMLSCHEMA
+		// The namespace declaration is left exactly as production has it:
+		// xsi:schemaLocation pairs a namespace with the schema describing it, it
+		// does not replace the namespace. Substituting the schema's address here
+		// would move xhtml:link out of the namespace Google reads hreflang from.
+		// Declared unconditionally, so the pairing resolves with or without
+		// alternates present.
+		urlset.XMLNSXHTML = XMLNSXHTML
 		urlset.XSI = XSI
 		urlset.SchemaLocation = SCHEMALOCATION
 	}

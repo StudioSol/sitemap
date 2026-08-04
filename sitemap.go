@@ -36,6 +36,10 @@ func NewIndexGroup(folder string, name string) (*IndexGroup, error) {
 
 // Search all the xml.gz sitemaps_dir directory, uses the modified date of the file as lastModified
 // path_index is included for the function does not include the url of the index in your own content, if it is present in the same directory.
+//
+// Reports nothing when the directory cannot be read, and skips entries it
+// cannot stat, so an unreadable or misspelled path yields an empty Index rather
+// than an error. Check the result is non-empty before publishing it.
 func CreateIndexByScanDir(targetDir string, indexFileName string, public_url string) (index Index) {
 	index = Index{Sitemaps: []Sitemap{}}
 

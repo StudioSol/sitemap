@@ -3,9 +3,11 @@ package sitemap
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // collector is a writer that keeps every file it is handed.
@@ -272,5 +274,171 @@ func TestWriterSplitsOversizedFlush(t *testing.T) {
 	}
 	if got := c.urls(t); got != MAXURLSETSIZE {
 		t.Errorf("wrote %d urls, want %d", got, MAXURLSETSIZE)
+	}
+}
+
+// A blocked writer keeps a flush in flight while Adds keep arriving, which is
+// the interleaving that matters: the batch has left the group, and whatever
+// arrives meanwhile must not be swept away with it.
+func TestAddDuringAnInFlightFlushLosesNothing(t *testing.T) {
+	release := make(chan struct{})
+	var (
+		mu    sync.Mutex
+		files []File
+		once  sync.Once
+	)
+
+	g := NewSitemapGroup("inflight", false)
+	g.SetWriter(func(f File) error {
+		// hold only the first delivery, so the rest of the run is not serialized
+		once.Do(func() { <-release })
+		mu.Lock()
+		files = append(files, f)
+		mu.Unlock()
+		return nil
+	})
+
+	const extra = 500
+	const n = MAXURLSETSIZE + extra
+
+	// Add calls the writer inline, so the goroutine that trips the flush is the
+	// one that blocks. Real overlap needs other goroutines still adding, which
+	// is also how a consumer with concurrent producers behaves.
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			g.Add(URL{Loc: fmt.Sprintf("https://ex.com/p%d", i)})
+		}(i)
+	}
+
+	// wait until urls have piled up behind the blocked writer, then let it go
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		g.mu.Lock()
+		pending := len(g.urls)
+		g.mu.Unlock()
+		if pending >= extra/2 || time.Now().After(deadline) {
+			break
+		}
+		runtime.Gosched()
+	}
+	close(release)
+	wg.Wait()
+
+	if err := g.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if err := g.Err(); err != nil {
+		t.Fatalf("Err: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	got := 0
+	for _, f := range files {
+		got += len(locsOf(t, f.Content))
+	}
+	if got != n {
+		t.Errorf("wrote %d of %d urls, %d lost while a flush was in flight", got, n, n-got)
+	}
+}
+
+// A file that was built but never delivered must not be left in URLs(), or the
+// index ends up naming a file nobody wrote.
+func TestUndeliveredFileIsNotReportedAsWritten(t *testing.T) {
+	boom := errors.New("disk full")
+	g := NewSitemapGroup("phantom", false)
+	g.SetWriter(func(File) error { return boom })
+
+	for i := 0; i < MAXURLSETSIZE; i++ {
+		g.Add(URL{Loc: fmt.Sprintf("https://ex.com/p%d", i)})
+	}
+
+	if err := g.Err(); !errors.Is(err, boom) {
+		t.Fatalf("Err() = %v, want %v", err, boom)
+	}
+	if names := g.URLs(); len(names) != 0 {
+		t.Errorf("URLs() = %v, want empty: none of those files were written", names)
+	}
+}
+
+// Only the deliveries that failed are forgotten; earlier ones did reach disk.
+func TestDeliveredFilesStayReportedWhenALaterOneFails(t *testing.T) {
+	boom := errors.New("disk full")
+	delivered := 0
+	g := NewSitemapGroup("partial", false)
+	g.SetWriter(func(File) error {
+		delivered++
+		if delivered > 1 {
+			return boom
+		}
+		return nil
+	})
+
+	// long locs, so one flush splits into several files
+	long := strings.Repeat("a", 260)
+	for i := 0; i < MAXURLSETSIZE; i++ {
+		g.Add(URL{Loc: fmt.Sprintf("https://ex.com/%s%d", long, i)})
+	}
+
+	if err := g.Err(); !errors.Is(err, boom) {
+		t.Fatalf("Err() = %v, want %v", err, boom)
+	}
+	if names := g.URLs(); len(names) != 1 {
+		t.Errorf("URLs() = %v, want just the one file that was delivered", names)
+	}
+}
+
+// Files() used to swallow a build failure entirely: the channel closed with no
+// file and nothing for the caller to check.
+func TestFilesRecordsBuildFailures(t *testing.T) {
+	g := NewSitemapGroup("toobig", false)
+	g.Add(URL{Loc: "https://ex.com/" + strings.Repeat("d", MAXFILESIZE+1)})
+
+	files := 0
+	for range g.Files() {
+		files++
+	}
+	if files != 0 {
+		t.Errorf("got %d files for an unsplittable url, want 0", files)
+	}
+	if err := g.Err(); !errors.Is(err, ErrMaxFileSize) {
+		t.Errorf("Err() = %v, want ErrMaxFileSize", err)
+	}
+}
+
+// Create must return every file it made, not stash the overflow on the group:
+// a caller writing what it got back would silently drop those urls.
+func TestCreateReturnsACompletePartition(t *testing.T) {
+	g := NewSitemapGroup("partition", false)
+
+	urls := make([]URL, MAXURLSETSIZE+137)
+	for i := range urls {
+		urls[i] = URL{Loc: fmt.Sprintf("https://ex.com/p%d", i)}
+	}
+
+	files, err := g.Create(URLSet{URLs: urls})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("got %d files, want 2", len(files))
+	}
+
+	total := 0
+	for _, f := range files {
+		total += len(locsOf(t, f.Content))
+	}
+	if total != len(urls) {
+		t.Errorf("returned files hold %d of %d urls", total, len(urls))
+	}
+
+	g.mu.Lock()
+	left := len(g.urls)
+	g.mu.Unlock()
+	if left != 0 {
+		t.Errorf("Create left %d urls on the group instead of returning them", left)
 	}
 }

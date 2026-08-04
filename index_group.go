@@ -22,6 +22,9 @@ type IndexGroup struct {
 	//the caller through Err()
 	errMu sync.Mutex
 	err   error
+
+	//keeps a second Close from panicking on an already closed channel
+	closeOnce sync.Once
 }
 
 // setErr records the first error seen, so a later success cannot mask it.
@@ -146,10 +149,17 @@ func CloseIndexGroups(groups ...*IndexGroup) (done <-chan bool) {
 }
 
 // Mandatory operation, handle the rest of the url that has not been added to any sitemap and add.
-// Furthermore performs cleaning of variables and closes the channel group
+// Furthermore performs cleaning of variables and closes the channel group.
+//
+// Safe to call more than once - closing an already closed channel panics, and
+// CloseIndexGroups makes a second call easy to arrive at by accident. Calling
+// Add after Close still panics, as a send on a closed channel: finish adding
+// before closing.
 func (s *IndexGroup) Close() <-chan bool {
 	var closeDone = make(chan bool, 1)
-	close(s.sitemap_channel)
+	s.closeOnce.Do(func() {
+		close(s.sitemap_channel)
+	})
 
 	go func() {
 		<-s.done
@@ -181,13 +191,19 @@ func (s *IndexGroup) Initialize() {
 		}
 	}
 
-	//remnant urls
-	if err := s.Create(s.getSitemapSet()); err != nil {
-		log.Println(err)
+	//remnant urls. Guarded: when the total is an exact multiple of
+	//MAXURLSETSIZE the loop above already wrote everything, and creating again
+	//would leave behind an index file with no entries in it.
+	if len(s.sitemaps) > 0 {
+		if err := s.Create(s.getSitemapSet()); err != nil {
+			log.Println(err)
+		}
 	}
 	s.Clear()
 
-	s.done <- true
+	//closed rather than sent to: a send only ever releases one waiter, so a
+	//second Close would wait for a signal that never comes again.
+	close(s.done)
 }
 
 // Configure name and folder of group

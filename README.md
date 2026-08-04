@@ -247,9 +247,10 @@ sitemaps.org and xhtml schemas.
 group.SetSchemaValidation(true)
 ~~~
 
-For local validation, **not** for production output: to make `xhtml:link` validatable, the
-xhtml namespace is declared as `XHTMLSCHEMA` (`.../xhtml11_schema.html`) rather than the usual
-`XMLNSXHTML`, because that is what the schemaLocation mapping points at. Off by default.
+It pairs the sitemaps.org and xhtml namespaces with the schemas that describe them. The
+namespace declarations themselves are untouched — `xsi:schemaLocation` pairs a namespace with
+a schema, it does not replace the namespace — so `xhtml:link` keeps resolving to `XMLNSXHTML`,
+which is what makes Google read it as the hreflang extension. Off by default.
 
 #### sitemap.CreateSitemapIndex(path, sitemap.Index)
 
