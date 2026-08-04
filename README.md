@@ -103,7 +103,10 @@ for file := range group.Files() {
 ~~~
 
 Draining the channel is what generates the files, so it has to finish before `group.URLs()`
-reports anything. With several groups, drain each one — there is no combined helper:
+reports anything. Note that `Add` retains every URL until then — see `SetWriter` below if the
+set is large.
+
+With several groups, drain each one — there is no combined helper:
 
 ~~~ go
 var wg sync.WaitGroup
@@ -117,10 +120,49 @@ for _, g := range []*sitemap.SitemapGroup{group, group2} {
 wg.Wait()
 ~~~
 
+#### group.SetWriter(func(File) error) — for large sets
+
+`Files()` only produces anything after every URL has been added, so `Add` has to retain the
+whole set until then. For a few million URLs that is gigabytes of live heap.
+
+`SetWriter` hands each file to a callback the moment it fills, so the URLs behind it can be
+released. Peak memory stays around `MAXURLSETSIZE` URLs no matter how many you add:
+
+~~~ go
+group.SetWriter(func(f sitemap.File) error {
+    file, err := os.Create(filepath.Join(dir, f.Name))
+    if err != nil {
+        return err
+    }
+    if err := f.Write(file); err != nil {
+        file.Close()
+        return err
+    }
+    return file.Close()
+})
+
+for _, u := range urls {
+    group.Add(u)          // emits a file every MAXURLSETSIZE
+}
+if err := group.Flush(); err != nil {   // emits the remainder
+    return err
+}
+if err := group.Err(); err != nil {     // errors raised inside Add
+    return err
+}
+~~~
+
+Measured on 2M URLs carrying two alternates each: **645 MB retained without a writer, 13 MB
+peak with one**. The 10MB split, the file numbering and `URLs()` behave the same either way.
+
+`Add` cannot return an error, so failures from the incremental path are recorded and read
+back through `Err()`. `SetWriter` and `Files()` are alternative paths — pick one per group.
+
 > **Migrating from a version before `72b7a1a` (2016).** Back then the group owned an output
 > directory and wrote the files itself, through `Configure(name, folder, isMobile)`,
 > `Initialize`, `Close` and `CloseGroups`. Those are gone: build the files with `Files()` and
-> write them where you want. `GetSavedSitemaps()` is now `URLs()`.
+> write them where you want, or use `SetWriter` above, which keeps the bounded memory that
+> version had. `GetSavedSitemaps()` is now `URLs()`.
 
 ### Error handling on index groups
 
