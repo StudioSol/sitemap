@@ -1,7 +1,6 @@
 package sitemap
 
 import (
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -19,17 +18,17 @@ type IndexGroup struct {
 	done            chan bool
 }
 
-//Add a sitemap.Sitemap to the group
+// Add a sitemap.Sitemap to the group
 func (s *IndexGroup) Add(entry Sitemap) {
 	s.sitemap_channel <- entry
 }
 
-//Clean Urls not yet added to the group
+// Clean Urls not yet added to the group
 func (s *IndexGroup) Clear() {
 	s.sitemaps = []Sitemap{}
 }
 
-//Returns one sitemap.Index of Urls not yet added to the group
+// Returns one sitemap.Index of Urls not yet added to the group
 func (s *IndexGroup) getSitemapSet() Index {
 	return Index{Sitemaps: s.sitemaps}
 }
@@ -38,16 +37,22 @@ func (s *IndexGroup) getSitemapName() string {
 	return s.name + "_" + strconv.Itoa(s.group_count) + ".xml.gz"
 }
 
-//Saves the sitemap from the sitemap.URLSet
+// Saves the sitemap from the sitemap.URLSet
 func (s *IndexGroup) Create(index Index) {
 	var path string
 	var remnant []Sitemap
 	xml, err := createSitemapIndexXml(index)
 	if err == ErrMaxFileSize {
-		//splits into two sitemaps recursively
-		newlimit := MAXURLSETSIZE / 2
-		s.Create(Index{Sitemaps: index.Sitemaps[newlimit:]})
+		//a single entry that busts the limit cannot be split any further
+		if len(index.Sitemaps) < 2 {
+			log.Fatal("File not saved:", err)
+		}
+		//splits the set in half recursively, preserving entry order.
+		//len/2 (not MAXURLSETSIZE/2) because the 10mb limit can be reached
+		//with far fewer than 50k entries.
+		newlimit := len(index.Sitemaps) / 2
 		s.Create(Index{Sitemaps: index.Sitemaps[:newlimit]})
+		s.Create(Index{Sitemaps: index.Sitemaps[newlimit:]})
 		return
 	} else if err == ErrMaxUrlSetSize {
 		remnant = index.Sitemaps[MAXURLSETSIZE:]
@@ -95,8 +100,8 @@ func CloseIndexGroups(groups ...*IndexGroup) (done <-chan bool) {
 	return ch
 }
 
-//Mandatory operation, handle the rest of the url that has not been added to any sitemap and add.
-//Furthermore performs cleaning of variables and closes the channel group
+// Mandatory operation, handle the rest of the url that has not been added to any sitemap and add.
+// Furthermore performs cleaning of variables and closes the channel group
 func (s *IndexGroup) Close() <-chan bool {
 	var closeDone = make(chan bool, 1)
 	close(s.sitemap_channel)
@@ -109,7 +114,7 @@ func (s *IndexGroup) Close() <-chan bool {
 	return closeDone
 }
 
-//Initialize channel
+// Initialize channel
 func (s *IndexGroup) Initialize() {
 	s.done = make(chan bool, 1)
 	s.sitemap_channel = make(chan Sitemap)
@@ -128,14 +133,15 @@ func (s *IndexGroup) Initialize() {
 	s.done <- true
 }
 
-//Configure name and folder of group
+// Configure name and folder of group
 func (s *IndexGroup) Configure(name string, folder string) error {
 	s.name = strings.Replace(name, ".xml.gz", "", 1)
 	s.group_count = 1
 	s.folder = folder
-	_, err := ioutil.ReadDir(folder)
-	if err != nil {
-		err = os.MkdirAll(folder, 0655)
+	//0755, not 0655: without the owner execute bit the process cannot create
+	//files inside the directory it just made.
+	if _, err := os.Stat(folder); err != nil {
+		return os.MkdirAll(folder, 0755)
 	}
-	return err
+	return nil
 }

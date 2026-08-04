@@ -29,12 +29,12 @@ type SitemapGroup struct {
 	savedSitemaps []string
 }
 
-//Add a sitemap.URL to the group
+// Add a sitemap.URL to the group
 func (s *SitemapGroup) Add(url URL) {
 	s.urls = append(s.urls, url)
 }
 
-//Clean Urls not yet added to the group
+// Clean Urls not yet added to the group
 func (s *SitemapGroup) Clear() {
 	s.urls = nil
 }
@@ -43,19 +43,25 @@ func (s *SitemapGroup) getSitemapName() string {
 	return s.name + "_" + strconv.Itoa(s.group_count) + ".xml.gz"
 }
 
-//Saves the sitemap from the sitemap.URLSet
+// Saves the sitemap from the sitemap.URLSet
 func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 	var remnant []URL
 	xml, err := createSitemapXml(url_set, s.isMobile)
 
 	if err == ErrMaxFileSize {
-		//splits into two sitemaps recursively
-		newlimit := MAXURLSETSIZE / 2
-		firstSplit, err := s.Create(URLSet{URLs: url_set.URLs[newlimit:]})
+		//a single url that busts the limit cannot be split any further
+		if len(url_set.URLs) < 2 {
+			return nil, err
+		}
+		//splits the set in half recursively, preserving url order.
+		//splitting on len/2 (not MAXURLSETSIZE/2) matters because a set can
+		//exceed 10mb with far fewer than 50k urls - alternates make that common.
+		newlimit := len(url_set.URLs) / 2
+		firstSplit, err := s.Create(URLSet{URLs: url_set.URLs[:newlimit]})
 		if err != nil {
 			return nil, err
 		}
-		secondSplit, err := s.Create(URLSet{URLs: url_set.URLs[:newlimit]})
+		secondSplit, err := s.Create(URLSet{URLs: url_set.URLs[newlimit:]})
 		if err != nil {
 			return nil, err
 		}
@@ -86,12 +92,12 @@ func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 	return files, nil
 }
 
-//clean array of already generated sitemaps (not delete files)
+// clean array of already generated sitemaps (not delete files)
 func (s *SitemapGroup) ClearSavedSitemaps() {
 	s.savedSitemaps = []string{}
 }
 
-//returns the url of already generated sitemaps
+// returns the url of already generated sitemaps
 func (s *SitemapGroup) URLs() []string {
 	return s.savedSitemaps
 }
@@ -129,7 +135,7 @@ func (s *SitemapGroup) Files() chan File {
 	return filesChannel
 }
 
-//Configure name and folder of group
+// Configure name and folder of group
 func (s *SitemapGroup) Configure(name string, isMobile bool) {
 	s.name = strings.Replace(name, ".xml.gz", "", 1)
 	s.group_count = 1

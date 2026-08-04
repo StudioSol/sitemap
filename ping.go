@@ -7,8 +7,8 @@ import (
 	"sync"
 )
 
-//Sends a ping to search engines indicating that the index has been updated.
-//Currently supports Google and Bing.
+// Sends a ping to search engines indicating that the index has been updated.
+// Currently supports Google and Bing.
 func PingSearchEngines(indexFile string) {
 	var urls = []string{
 		fmt.Sprintf("http://www.google.com/ping?sitemap=%s", indexFile),

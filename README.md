@@ -29,6 +29,50 @@ group.Add(sitemap.URL{
     })
 ~~~
 
+#### Localized versions (hreflang alternates)
+
+To annotate a URL with its localized versions, fill `Alternates`. Each entry becomes an
+`<xhtml:link rel="alternate" hreflang=".." href=".."/>` inside the `<url>`, per
+[Google's sitemap spec for localized versions](https://developers.google.com/search/docs/specialty/international/localized-versions#sitemap).
+
+~~~ go
+group.Add(sitemap.URL{
+    Loc: "https://example.com/en/page",
+    Alternates: []sitemap.Alternate{
+        {HrefLang: "en", Href: "https://example.com/en/page"},
+        {HrefLang: "pt-br", Href: "https://example.com/pt/page"},
+        {HrefLang: sitemap.XDefault, Href: "https://example.com/page"},
+    },
+})
+~~~
+
+Produces:
+
+~~~ xml
+<url>
+  <loc>https://example.com/en/page</loc>
+  <xhtml:link rel="alternate" hreflang="en" href="https://example.com/en/page"></xhtml:link>
+  <xhtml:link rel="alternate" hreflang="pt-br" href="https://example.com/pt/page"></xhtml:link>
+  <xhtml:link rel="alternate" hreflang="x-default" href="https://example.com/page"></xhtml:link>
+</url>
+~~~
+
+`rel="alternate"` is written for you, and the `xmlns:xhtml` declaration is added to the
+`<urlset>` only when at least one URL in the file carries alternates — so sitemaps without
+them stay byte-identical to before.
+
+Two rules come from Google, not from this library, and are the caller's responsibility:
+
+- **The set must be self-referential.** Every localized page must list *all* versions of
+  itself, including its own `Loc`. In the example above, the `pt-br` page has to carry the
+  same three `Alternates`.
+- **`hreflang` must be a valid ISO 639-1 language**, optionally with an ISO 3166-1 Alpha 2
+  region (`pt`, `pt-br`, `en-us`), or `sitemap.XDefault` for the fallback version.
+
+Alternates inflate each `<url>` by roughly 100 bytes per language, so a sitemap with many
+locales reaches the 10MB file limit well before the 50k URL limit. The group splits on
+either limit automatically.
+
 
 #### group.Close()
 
