@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type File struct {
@@ -14,48 +15,96 @@ type File struct {
 }
 
 func (f *File) Write(w io.Writer) error {
-	zip, _ := gzip.NewWriterLevel(w, gzip.BestCompression)
-	defer zip.Close()
-	_, err := zip.Write(f.Content)
-	return err
+	zip, err := gzip.NewWriterLevel(w, gzip.BestCompression)
+	if err != nil {
+		return err
+	}
+	if _, err := zip.Write(f.Content); err != nil {
+		zip.Close()
+		return err
+	}
+	//Close writes the gzip footer, so its error is the difference between a
+	//complete file and a truncated one
+	return zip.Close()
 }
 
 type SitemapGroup struct {
-	name          string
-	folder        string
-	group_count   int
-	urls          []URL
-	isMobile      bool
-	savedSitemaps []string
+	name             string
+	folder           string
+	group_count      int
+	urls             []URL
+	isMobile         bool
+	schemaValidation bool
+	savedSitemaps    []string
+
+	//guards urls. Add is routinely called from many goroutines at once, and an
+	//unsynchronized append silently drops entries.
+	mu sync.Mutex
 }
 
-//Add a sitemap.URL to the group
+// SetSchemaValidation makes the generated sitemaps carry xsi:schemaLocation,
+// so they can be checked against the sitemaps.org and xhtml schemas.
+//
+// This is for local validation, not for production output: to make xhtml:link
+// validatable the xhtml namespace is declared as XHTMLSCHEMA instead of the
+// usual XMLNSXHTML, which the schemaLocation mapping requires.
+func (s *SitemapGroup) SetSchemaValidation(on bool) {
+	s.schemaValidation = on
+}
+
+// Add a sitemap.URL to the group. Safe to call concurrently.
 func (s *SitemapGroup) Add(url URL) {
+	s.mu.Lock()
 	s.urls = append(s.urls, url)
+	s.mu.Unlock()
 }
 
-//Clean Urls not yet added to the group
+// Clean Urls not yet added to the group
 func (s *SitemapGroup) Clear() {
+	s.mu.Lock()
 	s.urls = nil
+	s.mu.Unlock()
+}
+
+// takeUrls removes and returns every url pending in the group.
+func (s *SitemapGroup) takeUrls() []URL {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	urls := s.urls
+	s.urls = nil
+	return urls
+}
+
+// addAll appends urls back onto the group, for remnants left by a split.
+func (s *SitemapGroup) addAll(urls []URL) {
+	s.mu.Lock()
+	s.urls = append(s.urls, urls...)
+	s.mu.Unlock()
 }
 
 func (s *SitemapGroup) getSitemapName() string {
 	return s.name + "_" + strconv.Itoa(s.group_count) + ".xml.gz"
 }
 
-//Saves the sitemap from the sitemap.URLSet
+// Saves the sitemap from the sitemap.URLSet
 func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 	var remnant []URL
-	xml, err := createSitemapXml(url_set, s.isMobile)
+	xml, err := createSitemapXml(url_set, s.isMobile, s.schemaValidation)
 
 	if err == ErrMaxFileSize {
-		//splits into two sitemaps recursively
-		newlimit := MAXURLSETSIZE / 2
-		firstSplit, err := s.Create(URLSet{URLs: url_set.URLs[newlimit:]})
+		//a single url that busts the limit cannot be split any further
+		if len(url_set.URLs) < 2 {
+			return nil, err
+		}
+		//splits the set in half recursively, preserving url order.
+		//splitting on len/2 (not MAXURLSETSIZE/2) matters because a set can
+		//exceed 10mb with far fewer than 50k urls - alternates make that common.
+		newlimit := len(url_set.URLs) / 2
+		firstSplit, err := s.Create(URLSet{URLs: url_set.URLs[:newlimit]})
 		if err != nil {
 			return nil, err
 		}
-		secondSplit, err := s.Create(URLSet{URLs: url_set.URLs[:newlimit]})
+		secondSplit, err := s.Create(URLSet{URLs: url_set.URLs[newlimit:]})
 		if err != nil {
 			return nil, err
 		}
@@ -63,7 +112,7 @@ func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 	} else if err == ErrMaxUrlSetSize {
 		remnant = url_set.URLs[MAXURLSETSIZE:]
 		url_set.URLs = url_set.URLs[:MAXURLSETSIZE]
-		xml, err = createSitemapXml(url_set, s.isMobile)
+		xml, err = createSitemapXml(url_set, s.isMobile, s.schemaValidation)
 	}
 	if err != nil {
 		return nil, err
@@ -80,18 +129,18 @@ func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 
 	// append remnant urls if exists
 	if len(remnant) > 0 {
-		s.urls = append(s.urls, remnant...)
+		s.addAll(remnant)
 	}
 
 	return files, nil
 }
 
-//clean array of already generated sitemaps (not delete files)
+// clean array of already generated sitemaps (not delete files)
 func (s *SitemapGroup) ClearSavedSitemaps() {
 	s.savedSitemaps = []string{}
 }
 
-//returns the url of already generated sitemaps
+// returns the url of already generated sitemaps
 func (s *SitemapGroup) URLs() []string {
 	return s.savedSitemaps
 }
@@ -101,7 +150,8 @@ func (s *SitemapGroup) Files() chan File {
 	go func() {
 		var partialGroup []URL
 		defer close(filesChannel)
-		for _, entry := range s.urls {
+		//taken under the lock, so a concurrent Add cannot race with this range
+		for _, entry := range s.takeUrls() {
 			partialGroup = append(partialGroup, entry)
 			if len(partialGroup) == MAXURLSETSIZE {
 				groupFiles, err := s.Create(URLSet{URLs: partialGroup})
@@ -129,7 +179,7 @@ func (s *SitemapGroup) Files() chan File {
 	return filesChannel
 }
 
-//Configure name and folder of group
+// Configure name and folder of group
 func (s *SitemapGroup) Configure(name string, isMobile bool) {
 	s.name = strings.Replace(name, ".xml.gz", "", 1)
 	s.group_count = 1
