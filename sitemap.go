@@ -80,3 +80,15 @@ func CreateSitemapIndex(indexFilePath string, index Index) (err error) {
 	log.Printf("Sitemap Index created on %s", indexFilePath)
 	return err
 }
+
+// IndexXML renders a sitemap index and returns the raw XML, without touching
+// the filesystem. For callers that hand the bytes straight to object storage
+// rather than writing a local file; CreateSitemapIndex is the file-writing
+// counterpart, and SitemapGroup.Files is the equivalent for the sitemaps
+// themselves.
+//
+// The bytes are not gzipped. Compress them yourself if the destination serves
+// them as .gz - File.Write does that for sitemaps.
+func IndexXML(index Index) ([]byte, error) {
+	return createSitemapIndexXml(index)
+}

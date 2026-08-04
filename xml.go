@@ -19,6 +19,12 @@ const (
 	// XDefault is the hreflang value that marks the fallback version served
 	// when no other localized version matches the user's language.
 	XDefault = "x-default"
+
+	// Declared only in schema validation mode, see
+	// SitemapGroup.SetSchemaValidation.
+	XSI            = "http://www.w3.org/2001/XMLSchema-instance"
+	XHTMLSCHEMA    = "http://www.w3.org/TR/xhtml11/xhtml11_schema.html"
+	SCHEMALOCATION = "http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd http://www.w3.org/TR/xhtml11/xhtml11_schema.html http://www.w3.org/2002/08/xhtml/xhtml1-strict.xsd"
 )
 
 var (
@@ -81,11 +87,13 @@ type URL struct {
 }
 
 type URLSet struct {
-	XMLName     xml.Name `xml:"urlset"`
-	XMLNS       string   `xml:"xmlns,attr"`
-	XMLNSMOBILE string   `xml:"xmlns:mobile,attr,omitempty"`
-	XMLNSXHTML  string   `xml:"xmlns:xhtml,attr,omitempty"`
-	URLs        []URL    `xml:"url"`
+	XMLName        xml.Name `xml:"urlset"`
+	XMLNS          string   `xml:"xmlns,attr"`
+	XSI            string   `xml:"xmlns:xsi,attr,omitempty"`
+	SchemaLocation string   `xml:"xsi:schemaLocation,attr,omitempty"`
+	XMLNSMOBILE    string   `xml:"xmlns:mobile,attr,omitempty"`
+	XMLNSXHTML     string   `xml:"xmlns:xhtml,attr,omitempty"`
+	URLs           []URL    `xml:"url"`
 }
 
 type Index struct {
@@ -99,7 +107,7 @@ type Sitemap struct {
 	LastMod *time.Time `xml:"lastmod,omitempty"`
 }
 
-func createSitemapXml(urlset URLSet, isMobile bool) (sitemapXML []byte, err error) {
+func createSitemapXml(urlset URLSet, isMobile, schemaValidation bool) (sitemapXML []byte, err error) {
 	if len(urlset.URLs) > MAXURLSETSIZE {
 		err = ErrMaxUrlSetSize
 		return
@@ -114,6 +122,16 @@ func createSitemapXml(urlset URLSet, isMobile bool) (sitemapXML []byte, err erro
 	// alternates, so sitemaps without them stay byte-identical.
 	if hasAlternates(urlset.URLs) {
 		urlset.XMLNSXHTML = XMLNSXHTML
+	}
+
+	if schemaValidation {
+		// SCHEMALOCATION maps the xhtml11 namespace to the strict xhtml schema,
+		// so xhtml:link is only validatable when the declaration matches that
+		// URI rather than the usual one. Declared unconditionally here: the
+		// mapping is what is being validated, with or without alternates.
+		urlset.XMLNSXHTML = XHTMLSCHEMA
+		urlset.XSI = XSI
+		urlset.SchemaLocation = SCHEMALOCATION
 	}
 
 	sitemapXML = []byte(PREAMBLE)
@@ -143,7 +161,11 @@ func createSitemapIndexXml(index Index) (indexXML []byte, err error) {
 		err = ErrMaxUrlSetSize
 		return
 	}
-	index.XMLNS = XMLNS
+	// Defaulted, not forced: a caller pinned to an older schema (some consumers
+	// still publish sitemap/0.84) would otherwise have it silently rewritten.
+	if index.XMLNS == "" {
+		index.XMLNS = XMLNS
+	}
 	indexXML = []byte(PREAMBLE)
 	var sitemapIndexXML []byte
 	sitemapIndexXML, err = xml.Marshal(index)

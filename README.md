@@ -178,6 +178,37 @@ index := sitemap.CreateIndexByScanDir("/var/www/blog/public/sitemaps/", "/var/ww
 __Warning__: this release do not control old sitemaps, when using this method the index can be created with sitemaps that are no longer used. In case you need to delete manually.
 
 
+#### sitemap.IndexXML(sitemap.Index) ([]byte, error)
+
+Renders the index and returns the raw XML without touching the filesystem, for callers that
+hand the bytes to object storage instead of writing a local file.
+
+~~~ go
+content, err := sitemap.IndexXML(index)
+if err != nil {
+    return err
+}
+return storage.Upload(ctx, bytes.NewReader(content), "application/xml", "sitemap/index.xml")
+~~~
+
+The bytes are **not** gzipped — compress them yourself if the destination serves `.gz`.
+
+`Index.XMLNS` is defaulted, not forced: set it to keep an older schema (some consumers still
+publish `sitemap/0.84`) and it will be preserved.
+
+#### group.SetSchemaValidation(bool)
+
+Adds `xsi:schemaLocation` to the generated sitemaps so they can be checked against the
+sitemaps.org and xhtml schemas.
+
+~~~ go
+group.SetSchemaValidation(true)
+~~~
+
+For local validation, **not** for production output: to make `xhtml:link` validatable, the
+xhtml namespace is declared as `XHTMLSCHEMA` (`.../xhtml11_schema.html`) rather than the usual
+`XMLNSXHTML`, because that is what the schemaLocation mapping points at. Off by default.
+
 #### sitemap.CreateSitemapIndex(path, sitemap.Index)
 
 creates and gzip the xml index

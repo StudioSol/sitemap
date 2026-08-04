@@ -29,16 +29,27 @@ func (f *File) Write(w io.Writer) error {
 }
 
 type SitemapGroup struct {
-	name          string
-	folder        string
-	group_count   int
-	urls          []URL
-	isMobile      bool
-	savedSitemaps []string
+	name             string
+	folder           string
+	group_count      int
+	urls             []URL
+	isMobile         bool
+	schemaValidation bool
+	savedSitemaps    []string
 
 	//guards urls. Add is routinely called from many goroutines at once, and an
 	//unsynchronized append silently drops entries.
 	mu sync.Mutex
+}
+
+// SetSchemaValidation makes the generated sitemaps carry xsi:schemaLocation,
+// so they can be checked against the sitemaps.org and xhtml schemas.
+//
+// This is for local validation, not for production output: to make xhtml:link
+// validatable the xhtml namespace is declared as XHTMLSCHEMA instead of the
+// usual XMLNSXHTML, which the schemaLocation mapping requires.
+func (s *SitemapGroup) SetSchemaValidation(on bool) {
+	s.schemaValidation = on
 }
 
 // Add a sitemap.URL to the group. Safe to call concurrently.
@@ -78,7 +89,7 @@ func (s *SitemapGroup) getSitemapName() string {
 // Saves the sitemap from the sitemap.URLSet
 func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 	var remnant []URL
-	xml, err := createSitemapXml(url_set, s.isMobile)
+	xml, err := createSitemapXml(url_set, s.isMobile, s.schemaValidation)
 
 	if err == ErrMaxFileSize {
 		//a single url that busts the limit cannot be split any further
@@ -101,7 +112,7 @@ func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 	} else if err == ErrMaxUrlSetSize {
 		remnant = url_set.URLs[MAXURLSETSIZE:]
 		url_set.URLs = url_set.URLs[:MAXURLSETSIZE]
-		xml, err = createSitemapXml(url_set, s.isMobile)
+		xml, err = createSitemapXml(url_set, s.isMobile, s.schemaValidation)
 	}
 	if err != nil {
 		return nil, err
