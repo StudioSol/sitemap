@@ -33,7 +33,7 @@ func TestFilesSplitsOversizedSetWithFewUrls(t *testing.T) {
 	g := NewSitemapGroup("big", false)
 
 	const n = 2000
-	long := strings.Repeat("a", 6000)
+	long := strings.Repeat("a", 27000)
 	for i := 0; i < n; i++ {
 		g.Add(URL{Loc: fmt.Sprintf("https://ex.com/%s%d", long, i)})
 	}
@@ -69,7 +69,7 @@ func TestFilesSplitsOversizedSetCausedByAlternates(t *testing.T) {
 		for j := 0; j < 20; j++ {
 			alts = append(alts, Alternate{
 				HrefLang: fmt.Sprintf("l%d", j),
-				Href:     fmt.Sprintf("https://ex.com/%s/l%d/p%d", strings.Repeat("b", 150), j, i),
+				Href:     fmt.Sprintf("https://ex.com/%s/l%d/p%d", strings.Repeat("b", 800), j, i),
 			})
 		}
 		g.Add(URL{Loc: fmt.Sprintf("https://ex.com/p%d", i), Alternates: alts})
@@ -103,8 +103,8 @@ func TestFilesSplitsOversizedSetCausedByAlternates(t *testing.T) {
 func TestSplitPreservesUrlOrder(t *testing.T) {
 	g := NewSitemapGroup("ordered", false)
 
-	const n = 400
-	long := strings.Repeat("c", 30000)
+	const n = 4000
+	long := strings.Repeat("c", 14000)
 	want := make([]string, 0, n)
 	for i := 0; i < n; i++ {
 		loc := fmt.Sprintf("https://ex.com/%s%05d", long, i)

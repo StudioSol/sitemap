@@ -2,6 +2,7 @@ package sitemap
 
 import (
 	"encoding/xml"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -134,13 +135,17 @@ func TestSitemapXmlIsWellFormed(t *testing.T) {
 		t.Fatalf("createSitemapXml: %v", err)
 	}
 
-	// a real parser must accept it, prefixes included
+	// a real parser must accept it, prefixes included. Only io.EOF ends the
+	// loop: bailing on any error would let malformed trailing xml pass.
 	dec := xml.NewDecoder(strings.NewReader(string(got)))
 	links := 0
 	for {
 		tok, err := dec.Token()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			t.Fatalf("parsing failed: %v", err)
 		}
 		if se, ok := tok.(xml.StartElement); ok && se.Name.Local == "link" {
 			links++
@@ -210,15 +215,51 @@ func TestSchemaValidationEmitsSchemaLocation(t *testing.T) {
 	for _, want := range []string{
 		`xmlns:xsi="` + XSI + `"`,
 		`xsi:schemaLocation="` + SCHEMALOCATION + `"`,
-		`xmlns:xhtml="` + XHTMLSCHEMA + `"`,
+		// unchanged: schemaLocation pairs a namespace with the schema describing
+		// it, it does not replace the namespace
+		`xmlns:xhtml="` + XMLNSXHTML + `"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in:\n%s", want, s)
 		}
 	}
-	// the schemaLocation mapping requires the xhtml11 uri, not the usual one
-	if strings.Contains(s, `xmlns:xhtml="`+XMLNSXHTML+`"`) {
-		t.Errorf("validation mode should not use the production xhtml uri:\n%s", s)
+	if strings.Contains(s, XHTMLSCHEMA) {
+		t.Errorf("the xhtml11 schema address must not appear as a namespace:\n%s", s)
+	}
+	if !strings.Contains(SCHEMALOCATION, XMLNSXHTML+" ") {
+		t.Errorf("SCHEMALOCATION does not pair %q with a schema: %q", XMLNSXHTML, SCHEMALOCATION)
+	}
+}
+
+// Validation mode must not move xhtml:link to another namespace: resolving to
+// XMLNSXHTML is what makes Google read it as the hreflang extension.
+func TestSchemaValidationKeepsAlternatesInTheHreflangNamespace(t *testing.T) {
+	got, err := createSitemapXml(URLSet{URLs: []URL{
+		{Loc: "https://ex.com/p", Alternates: []Alternate{{HrefLang: "es", Href: "https://ex.com/es/p"}}},
+	}}, false, true)
+	if err != nil {
+		t.Fatalf("createSitemapXml: %v", err)
+	}
+
+	dec := xml.NewDecoder(strings.NewReader(string(got)))
+	links := 0
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("parsing failed: %v", err)
+		}
+		if se, ok := tok.(xml.StartElement); ok && se.Name.Local == "link" {
+			links++
+			if se.Name.Space != XMLNSXHTML {
+				t.Errorf("link resolved to %q, want %q", se.Name.Space, XMLNSXHTML)
+			}
+		}
+	}
+	if links != 1 {
+		t.Errorf("parsed %d link elements, want 1", links)
 	}
 }
 

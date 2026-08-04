@@ -2,6 +2,7 @@ package sitemap
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,4 +150,48 @@ func TestConfigureCreatesWritableFolder(t *testing.T) {
 		t.Fatalf("cannot write into the folder Configure created: %v", err)
 	}
 	f.Close()
+}
+
+// A total that is an exact multiple of MAXURLSETSIZE used to leave an extra
+// index file behind with no entries in it.
+func TestNoEmptyIndexAtExactBoundary(t *testing.T) {
+	dir := t.TempDir()
+	g, err := NewIndexGroup(dir, "idx")
+	if err != nil {
+		t.Fatalf("NewIndexGroup: %v", err)
+	}
+
+	for i := 0; i < MAXURLSETSIZE; i++ {
+		g.Add(Sitemap{Loc: fmt.Sprintf("https://ex.com/s_%d.xml.gz", i)})
+	}
+	<-g.Close()
+
+	if err := g.Err(); err != nil {
+		t.Fatalf("Err: %v", err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 1 {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("got %d index files (%v), want 1 - the second would be empty", len(entries), names)
+	}
+}
+
+// CloseIndexGroups makes a second Close easy to reach by accident, and closing
+// an already closed channel panics.
+func TestCloseTwiceDoesNotPanic(t *testing.T) {
+	g, err := NewIndexGroup(t.TempDir(), "idx")
+	if err != nil {
+		t.Fatalf("NewIndexGroup: %v", err)
+	}
+	g.Add(Sitemap{Loc: "https://ex.com/s_1.xml.gz"})
+
+	<-g.Close()
+	<-g.Close() // would panic on send/close of a closed channel
 }
