@@ -3,17 +3,21 @@
 Generates sitemaps and index files based on the sitemaps.org protocol.
 
 
-### sitemap.NewSitemapGroup(dir string,name string)
+### sitemap.NewSitemapGroup(name string, isMobile bool)
 
-Creates a new group of sitemaps that used a common name.
+Creates a new group of sitemaps that share a common name.
 
 ~~~ go
-group := sitemap.NewSitemapGroup("/var/www/blog/public/sitemaps/","blog")
+group := sitemap.NewSitemapGroup("blog", false)
 ~~~
 
-If the sitemap exceed the limit of 50k urls, new sitemaps will have a numeric suffix to the name. Example:
+If the sitemap exceeds the limit of 50k urls — or the 10MB file limit — the group produces
+several files, with a numeric suffix on the name:
 - blog_1.xml.gz
 - blog_2.xml.gz
+
+The group does not write anything to disk. It hands you the generated files and lets you
+decide where they go, which is what `group.Files()` below is for.
 
 #### group.Add(url sitemap.URL)
 
@@ -74,24 +78,49 @@ locales reaches the 10MB file limit well before the 50k URL limit. The group spl
 either limit automatically.
 
 
-#### group.Close()
+`Add` is safe to call from many goroutines at once.
 
-Handle the rest of the url that has not been added to any sitemap and add, in addition to clean variables and close the channel group
+#### group.Files() chan File
 
-#### sitemap.CloseGroups(groups ...*SitemapGroup) (done <-chan bool)
-
-if you use several groups of sitemap is safer use this function to close all groups for you before creating the index. Returns a channel with the done signal.
+Builds the sitemap files and streams them. Each `File` carries its `Name` and the raw XML in
+`Content`; `File.Write` gzips it into any `io.Writer`. Nothing reaches disk unless you put it
+there:
 
 ~~~ go
-	//release after close all groups
-	<-sitemap.CloseGroups(group, group2)
-
-	//generate index - by last execution paths
-	savedSitemaps := group.GetSavedSitemaps()
-	sitemapsgroup2 := group.GetSavedSitemaps()
-	savedSitemaps = append(savedSitemaps, sitemapsgroup2...)
-
+for file := range group.Files() {
+    f, err := os.Create(filepath.Join("/var/www/blog/public/sitemaps/", file.Name))
+    if err != nil {
+        return err
+    }
+    if err := file.Write(f); err != nil {
+        f.Close()
+        return err
+    }
+    if err := f.Close(); err != nil {
+        return err
+    }
+}
 ~~~
+
+Draining the channel is what generates the files, so it has to finish before `group.URLs()`
+reports anything. With several groups, drain each one — there is no combined helper:
+
+~~~ go
+var wg sync.WaitGroup
+for _, g := range []*sitemap.SitemapGroup{group, group2} {
+    wg.Add(1)
+    go func(g *sitemap.SitemapGroup) {
+        defer wg.Done()
+        for file := range g.Files() { /* write it */ }
+    }(g)
+}
+wg.Wait()
+~~~
+
+> **Migrating from a version before `72b7a1a` (2016).** Back then the group owned an output
+> directory and wrote the files itself, through `Configure(name, folder, isMobile)`,
+> `Initialize`, `Close` and `CloseGroups`. Those are gone: build the files with `Files()` and
+> write them where you want. `GetSavedSitemaps()` is now `URLs()`.
 
 ### Error handling on index groups
 
@@ -117,14 +146,16 @@ if errors.Is(err, sitemap.ErrMaxFileSize) { /* ... */ }
 
 ### Creating the index file
 
-Currently we have 2 ways to create the index, searching for files in the directory or passing a slice of urls to sitemaps. To generate the slice of sitemaps generated in the last run we GetSavedSitemaps function.
+There are 2 ways to create the index: scanning a directory for files, or passing a slice of
+sitemap names. `group.URLs()` gives you the names generated in the last run.
 
-#### group.GetSavedSitemaps() []string
+#### group.URLs() []string
 
-Returns an array of urls in the sitemaps created script execution
+Returns the names of the sitemaps generated in this run. Only meaningful after `Files()` has
+been fully drained, since that is what produces them.
 
 ~~~ go
-savedSitemaps := group.GetSavedSitemaps()
+savedSitemaps := group.URLs()
 ~~~
 
 #### sitemap.CreateIndexBySlice(savedSitemaps, path) sitemap.Index
