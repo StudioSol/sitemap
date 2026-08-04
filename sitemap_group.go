@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type File struct {
@@ -34,16 +35,40 @@ type SitemapGroup struct {
 	urls          []URL
 	isMobile      bool
 	savedSitemaps []string
+
+	//guards urls. Add is routinely called from many goroutines at once, and an
+	//unsynchronized append silently drops entries.
+	mu sync.Mutex
 }
 
-// Add a sitemap.URL to the group
+// Add a sitemap.URL to the group. Safe to call concurrently.
 func (s *SitemapGroup) Add(url URL) {
+	s.mu.Lock()
 	s.urls = append(s.urls, url)
+	s.mu.Unlock()
 }
 
 // Clean Urls not yet added to the group
 func (s *SitemapGroup) Clear() {
+	s.mu.Lock()
 	s.urls = nil
+	s.mu.Unlock()
+}
+
+// takeUrls removes and returns every url pending in the group.
+func (s *SitemapGroup) takeUrls() []URL {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	urls := s.urls
+	s.urls = nil
+	return urls
+}
+
+// addAll appends urls back onto the group, for remnants left by a split.
+func (s *SitemapGroup) addAll(urls []URL) {
+	s.mu.Lock()
+	s.urls = append(s.urls, urls...)
+	s.mu.Unlock()
 }
 
 func (s *SitemapGroup) getSitemapName() string {
@@ -93,7 +118,7 @@ func (s *SitemapGroup) Create(url_set URLSet) ([]File, error) {
 
 	// append remnant urls if exists
 	if len(remnant) > 0 {
-		s.urls = append(s.urls, remnant...)
+		s.addAll(remnant)
 	}
 
 	return files, nil
@@ -114,7 +139,8 @@ func (s *SitemapGroup) Files() chan File {
 	go func() {
 		var partialGroup []URL
 		defer close(filesChannel)
-		for _, entry := range s.urls {
+		//taken under the lock, so a concurrent Add cannot race with this range
+		for _, entry := range s.takeUrls() {
 			partialGroup = append(partialGroup, entry)
 			if len(partialGroup) == MAXURLSETSIZE {
 				groupFiles, err := s.Create(URLSet{URLs: partialGroup})

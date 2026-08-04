@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -164,6 +165,51 @@ func TestFilesSplitsOnUrlCount(t *testing.T) {
 	if total != n {
 		t.Errorf("got %d urls total, want %d", total, n)
 	}
+}
+
+// Add is called from one goroutine per url by real consumers. An
+// unsynchronized append does not merely race - it silently drops entries, and
+// a sitemap that is quietly incomplete is worse than one that fails loudly.
+func TestConcurrentAddKeepsEveryUrl(t *testing.T) {
+	g := NewSitemapGroup("concurrent", false)
+
+	const n = 5000
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			g.Add(URL{Loc: fmt.Sprintf("https://ex.com/p%d", i)})
+		}(i)
+	}
+	wg.Wait()
+
+	got := 0
+	for f := range g.Files() {
+		got += len(locsOf(t, f.Content))
+	}
+	if got != n {
+		t.Fatalf("wrote %d of %d urls, %d silently dropped", got, n, n-got)
+	}
+}
+
+// Clear must not race with a concurrent Add either.
+func TestConcurrentAddAndClear(t *testing.T) {
+	g := NewSitemapGroup("churn", false)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 500; i++ {
+		wg.Add(2)
+		go func(i int) {
+			defer wg.Done()
+			g.Add(URL{Loc: fmt.Sprintf("https://ex.com/p%d", i)})
+		}(i)
+		go func() {
+			defer wg.Done()
+			g.Clear()
+		}()
+	}
+	wg.Wait()
 }
 
 func TestGroupNamesAreSequential(t *testing.T) {
