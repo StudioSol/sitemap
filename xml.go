@@ -157,22 +157,30 @@ func createSitemapIndexXml(index Index) (indexXML []byte, err error) {
 }
 
 // Save and gzip xml
-func saveXml(xmlFile []byte, path string) (err error) {
+func saveXml(xmlFile []byte, path string) error {
 	fo, err := os.Create(path)
-	defer fo.Close()
-
 	if err != nil {
 		return err
 	}
 
-	zip, _ := gzip.NewWriterLevel(fo, gzip.BestCompression)
-	defer zip.Close()
-
-	_, err = zip.Write(xmlFile)
+	zip, err := gzip.NewWriterLevel(fo, gzip.BestCompression)
 	if err != nil {
+		fo.Close()
 		return err
 	}
 
-	return err
+	if _, err := zip.Write(xmlFile); err != nil {
+		zip.Close()
+		fo.Close()
+		return err
+	}
+
+	//both Close calls flush, and either can fail. Ignoring them reports a
+	//truncated file as a successful write.
+	if err := zip.Close(); err != nil {
+		fo.Close()
+		return err
+	}
+	return fo.Close()
 
 }

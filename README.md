@@ -93,6 +93,28 @@ if you use several groups of sitemap is safer use this function to close all gro
 
 ~~~
 
+### Error handling on index groups
+
+`IndexGroup.Create` returns an `error`. Before v1.1.0 it called `log.Fatal`, terminating the
+host process — a library has no business doing that.
+
+`Create` is also called internally by the goroutine that drains `Add`, where there is no
+caller to return to. Those failures are logged and recorded on the group, and `Err()`
+reports the first one:
+
+~~~ go
+<-group.Close()
+if err := group.Err(); err != nil {
+    return err
+}
+~~~
+
+Errors wrap their cause, so `errors.Is` works as expected:
+
+~~~ go
+if errors.Is(err, sitemap.ErrMaxFileSize) { /* ... */ }
+~~~
+
 ### Creating the index file
 
 Currently we have 2 ways to create the index, searching for files in the directory or passing a slice of urls to sitemaps. To generate the slice of sitemaps generated in the last run we GetSavedSitemaps function.

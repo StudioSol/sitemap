@@ -14,10 +14,17 @@ type File struct {
 }
 
 func (f *File) Write(w io.Writer) error {
-	zip, _ := gzip.NewWriterLevel(w, gzip.BestCompression)
-	defer zip.Close()
-	_, err := zip.Write(f.Content)
-	return err
+	zip, err := gzip.NewWriterLevel(w, gzip.BestCompression)
+	if err != nil {
+		return err
+	}
+	if _, err := zip.Write(f.Content); err != nil {
+		zip.Close()
+		return err
+	}
+	//Close writes the gzip footer, so its error is the difference between a
+	//complete file and a truncated one
+	return zip.Close()
 }
 
 type SitemapGroup struct {
